@@ -1,6 +1,10 @@
 # The game starts here.
 
-define w = Character(_('Wille'), color="#fe9601")
+define w = Character(_('Wille, the customer'), color="#fe9601")
+
+init python:
+    renpy.music.register_channel("chords", "sfx")
+    renpy.music.register_channel("original", "sfx")
 
 
 label start:
@@ -35,5 +39,7 @@ label start:
     be the same as on the guitar."
     w "The work is simple, but it is necessary to be in time. I pay 1000$.
     OK? Agreed."
+
+    call game
 
     return
