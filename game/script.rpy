@@ -12,7 +12,7 @@ label start:
 
     "Nothing changes from day to day."
 
-    "The gray city outside the window, things scattered all over the apartment,
+    "The grey city outside the window, things scattered all over the apartment,
     and a pointless attempt to find something to do in the interval
     between awakening and sleep."
 

@@ -1,20 +1,22 @@
-
-
 init python:
-    class DragAndDropManager(object):
+    CHORDS = ["Am", "Bm", "C", "Dm", "Em", "F", "G"]
 
-        __slots__ = (
-            'started',
-            'position_start',
-            # ...
-        )
+    LIBRARY_BACKGROUND_SIZE_RAW = renpy.image_size("icons/library_back.png")
+    LIBRARY_BACKGROUND_SIZE = LIBRARY_BACKGROUND_SIZE_RAW[0] * 1080 // LIBRARY_BACKGROUND_SIZE_RAW[1], 1080
 
-        def __init__(self):
-            pass
+    def library_chord_dragged():
+        print(renpy.get_widget("play_space", "ghost"))
+    
+    def get_size(d):
+        w, h = renpy.render(d, 0, 0, 0, 0).get_size()
+        print(w, h)
+        return w, h
+    
 
-screen chord_frame(name=''):
+screen chord_frame(name='', im_tag=''):
+    tag im_tag
     frame:
-        background im.Scale("icons/chords_frame_s.png", 100, 100)
+        background im.Scale(Image("icons/chords_frame_s.png"), 100, 100)
         xsize 100
         ysize 100
         vbox:
@@ -22,42 +24,65 @@ screen chord_frame(name=''):
             yalign 0.5
             text "[name]"
 
-screen chords_library:
+screen chord_library:
+    zorder 1
+    fixed:
+        add "icons/library_back.png" xalign 1.0 size LIBRARY_BACKGROUND_SIZE
+        vpgrid:
+            xanchor 0.5
+            xpos 1.0
+            yalign 0.2
+            spacing 70
+            xoffset -LIBRARY_BACKGROUND_SIZE[0] / 2
+            mousewheel True
+            cols 3
+            for i, name in enumerate(CHORDS):
+                button:
+                    use chord_frame(name)
+                    action library_chord_dragged
+                
+        
+                
 
-    frame:
-        background "icons/library_back.png"
-        xsize 0.1
-        ysize 1
-        xalign 0.9
+screen play_space:
+    zorder 0
+    key "hide_windows" action NullAction()
 
-    draggroup:
+    viewport:
+        add Frame("bg game.png", tile=True)
+        child_size 3000, 3000
+        edgescroll 100, 100
+        xinitial 0.5
+        yinitial 0.5
+        draggable True
 
-        drag:
-            drag_name "A"
-            use chord_frame('A')
-            droppable False
-            xpos 100 ypos 100
+        draggroup:
+            drag:
+                drag_name "test"
+                use chord_frame("test")
+                droppable True
+                draggable False
+                xpos 0.5 ypos 0.5
+            drag:
+                use chord_frame("A", "ghost")
+                xpos 0.5 ypos 0.5
+                xoffset 100
 
-        drag:
-            drag_name "Am"
-            use chord_frame('Am')
-            droppable False
-            xpos 150 ypos 100
+    use chord_library
 
-        drag:
-            drag_name "C"
-            use chord_frame('C')
-            droppable False
-            xpos 450 ypos 140
-        drag:
-            drag_name "Bm"
-            use chord_frame('Bm')
-            droppable False
-            xpos 0.5 ypos 0.5
+label disable_vn:
+    $ quick_menu = False
+    $ renpy.block_rollback()
+    return
+
+label enable_vn:
+    $ quick_menu = True
+    $ renpy.fix_rollback()
+    return
 
 
 label game:
-    scene bg game
+    scene
     hide screen say
-    call screen chords_library
-    "..."
+    call disable_vn
+    call screen play_space
