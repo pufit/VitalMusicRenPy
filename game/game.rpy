@@ -2,10 +2,26 @@ init python:
     CHORDS = ["Am", "Bm", "C", "Dm", "Em", "F", "G"]
 
     LIBRARY_BACKGROUND_SIZE_RAW = renpy.image_size("icons/library_back.png")
-    LIBRARY_BACKGROUND_SIZE = LIBRARY_BACKGROUND_SIZE_RAW[0] * 1080 // LIBRARY_BACKGROUND_SIZE_RAW[1], 1080
+    LIBRARY_BACKGROUND_SIZE = LIBRARY_BACKGROUND_SIZE_RAW[0] * config.screen_height // LIBRARY_BACKGROUND_SIZE_RAW[1], config.screen_height
+
+    CHORD_SIZE = 120
+
+    COLUMNS_IN_GRID = 3
+
+    LIBRARY_TOP_OFFSET = 50
+    LIBRARY_SPACING = 40
+
+    LIBRARY_SIDE_OFFSET_X = (LIBRARY_BACKGROUND_SIZE[0] - COLUMNS_IN_GRID * CHORD_SIZE - (COLUMNS_IN_GRID - 1) * LIBRARY_SPACING) / 2 
+
+    GRID_POSITIONS = [
+            (config.screen_width - LIBRARY_BACKGROUND_SIZE[0] + \
+                + (i % COLUMNS_IN_GRID) * (LIBRARY_SPACING + CHORD_SIZE) + LIBRARY_SIDE_OFFSET_X,
+            i / COLUMNS_IN_GRID * CHORD_SIZE + i / COLUMNS_IN_GRID * LIBRARY_SPACING) 
+            for i in range(len(CHORDS))
+        ]
 
     def library_chord_dragged():
-        print(renpy.get_widget("play_space", "ghost"))
+        pass
     
     def get_size(d):
         w, h = renpy.render(d, 0, 0, 0, 0).get_size()
@@ -16,9 +32,9 @@ init python:
 screen chord_frame(name='', im_tag=''):
     tag im_tag
     frame:
-        background im.Scale(Image("icons/chords_frame_s.png"), 100, 100)
-        xsize 100
-        ysize 100
+        background im.Scale(Image("icons/chords_frame_s.png"), CHORD_SIZE, CHORD_SIZE)
+        xsize CHORD_SIZE
+        ysize CHORD_SIZE
         vbox:
             xalign 0.5
             yalign 0.5
@@ -27,19 +43,21 @@ screen chord_frame(name='', im_tag=''):
 screen chord_library:
     zorder 1
     fixed:
+        align 0, 0
         add "icons/library_back.png" xalign 1.0 size LIBRARY_BACKGROUND_SIZE
-        vpgrid:
-            xanchor 0.5
-            xpos 1.0
-            yalign 0.2
-            spacing 70
-            xoffset -LIBRARY_BACKGROUND_SIZE[0] / 2
+        viewport:
+            ypos LIBRARY_TOP_OFFSET
             mousewheel True
-            cols 3
-            for i, name in enumerate(CHORDS):
-                button:
-                    use chord_frame(name)
-                    action library_chord_dragged
+            child_size 1920, 3000
+            draggroup:
+                for i, name in enumerate(CHORDS):
+                    drag:
+                        pos GRID_POSITIONS[i]
+                        drag_name "test"
+                        use chord_frame("test")
+                        droppable False
+                        draggable True
+
                 
         
                 
