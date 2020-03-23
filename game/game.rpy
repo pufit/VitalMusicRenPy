@@ -1,4 +1,5 @@
 init python:
+    import math
     from renpy.display.layout import Container
     from renpy.display.layout import Fixed
 
@@ -34,7 +35,7 @@ init python:
 
     INITIAL_POS = 0.5, 0.5
 
-    class Grid():
+    class Grid(object):
         def __init__(self, cell_width, cell_height, origin_pos, spacing=0):
             self.cell_width = cell_width
             self.cell_height = cell_height
@@ -98,15 +99,57 @@ init python:
         fixed.update()
         return fixed
 
+    def transfer_drag(from_group, to_group, drag):
+        from_group.remove(drag)
+        to_group.add(drag)
+
     def chord_block_dragged(island, drag, drop):
+        print(drag[0], drop)
         if drop:
+            drag[0].slot.attached = None
+            drop.attach(drag[0])
             drag[0].snap(drop.x, drop.y, delay=0.1)
-            island.drags_pos[drag[0]] = (drop.x, drop.y)
         else:
-            drag[0].snap(*island.drags_pos[drag[0]])
+            drag[0].snap(drag[0].slot.x, drag[0].slot.y)
+
+    class SlotDrag(Drag):
+        def __init__(self, image, index, pos):
+            super(SlotDrag, self).__init__(
+                d=image,
+                pos=pos,
+                drag_name="Slot" + str(index),
+                draggable=False,
+                droppable=True
+            )
+            self.index = index
+            self.attached = None
+
+        def attach(self, drag):
+            if self.attached is not None:
+                self.attached.remove()
+            self.attached = drag
+            drag.slot = self
+
+    class ChordDrag(Drag):
+        def __init__(self, name, drag_function, slot, pos):
+            chord_frame = ChordFrame(name)
+            super(ChordDrag, self).__init__(
+                d=chord_frame,
+                pos=pos,
+                draggable=True,
+                droppable=False,
+                dragged=drag_function,
+                drag_name=name,
+                drag_raise=True
+            )
+            self.slot = slot
+
+        def remove(self):
+            self.drag_group.remove(self)
 
     class Island(Container):
-        def __init__(self, width, height, pos, slots, **kwargs):
+        ALL_SLOTS = []
+        def __init__(self, width, height, pos, slots, drag_function, **kwargs):
             super(Island, self).__init__(**kwargs)
             self.width = width
             self.height = height
@@ -118,38 +161,63 @@ init python:
                 anchor=(0.5, 0.5),
                 pos=pos
             ))
+            self.drag_function = renpy.curry(drag_function)(self)
             self.grid = Grid(
                 cell_width=CHORD_SIZE,
                 cell_height=CHORD_SIZE,
                 origin_pos=(int(pos[0] * PLAYSPACE_WIDTH), int(pos[1] * PLAYSPACE_HEIGHT - 0.5 * CHORD_SIZE))
             )
+            self.chord_slots = []
             self.draggroup = DragGroup()
-            self.drags_pos = {}
             for i in range(-slots / 2, slots / 2):
-                drag_pos = self.grid.to_global(self.grid.get_cell_center_local((i, 0)))
-                drag = Drag(im.Scale(Image("icons/chords_frame_s.png"), CHORD_SIZE, CHORD_SIZE),
-                            pos=drag_pos,
-                            draggable=False,
-                            droppable=True
-                        )
-                self.draggroup.add(drag)
+                slot_pos = self.grid.to_global(self.grid.get_cell_center_local((i, 0)))
+                slot = SlotDrag(im.Scale(Image("icons/chords_frame_s.png"), CHORD_SIZE, CHORD_SIZE), i + slots/2, pos=slot_pos)
+                self.chord_slots.append(slot)
+                Island.ALL_SLOTS.append((slot, self))
+                self.draggroup.add(slot)
+                slot.snap(*slot_pos)
             self.add(self.draggroup)
             self.update()
+            self.add_chord("Am", 0)
+            self.add_chord("Am", 1)
 
-            self.add_chord("A", 0)
+        def add_chord(self, name, slot, drag_pos=None):
+            if drag_pos is None:
+                drag_pos = self.grid.to_global(self.grid.get_cell_center_local((-self.slots / 2 + slot, 0)))
+            chord = ChordDrag(name, self.drag_function, self.chord_slots[slot], pos=drag_pos)
+            self.chord_slots[slot].attach(chord)
+            self.draggroup.add(chord)
+            self.update()
+            return chord
 
-        def add_chord(self, name, pos):
-            chord_frame = ChordFrame(name)
-            drag_pos = self.grid.to_global(self.grid.get_cell_center_local((-self.slots / 2 + pos, 0)))
-            drag = Drag(
-                d=chord_frame,
-                pos=drag_pos,
-                draggable=True,
-                droppable=False,
-                dragged=renpy.curry(chord_block_dragged)(self)
-            )
-            self.drags_pos[drag] = drag_pos
-            self.draggroup.add(drag)
+        def get_drag(self, name):
+            return self.draggroup.get_child_by_name(name)
+
+        def remove_drag(self, drag):
+            self.draggroup.remove(drag)
+
+        def screen_to_local(self, pos):
+            x_offset = renpy.get_adjustment(XScrollValue("play_space")).value
+            y_offset = renpy.get_adjustment(YScrollValue("play_space")).value
+            return (pos[0] + x_offset, pos[1] + y_offset)
+
+    def library_button_dragged(library, drag, drop):
+        def get_distance(slot):
+            local_pos = slot[1].screen_to_local((drag[0].x, drag[0].y))
+            local_pos = local_pos[0] + drag[0].w // 2, local_pos[1] + drag[0].h // 2
+            if abs(local_pos[0] - slot[0].x) < slot[1].grid.cell_width and \
+                abs(local_pos[1] - slot[0].y) < slot[1].grid.cell_height:
+                return max(
+                    abs(local_pos[0] - slot[0].x) < slot[1].grid.cell_width,
+                    abs(local_pos[1] - slot[0].y) < slot[1].grid.cell_height
+                )
+            else:
+                return float("inf")
+
+        nearest = min(Island.ALL_SLOTS, key=get_distance)
+        if not math.isinf(get_distance(nearest)):
+            chord = nearest[1].add_chord(drag[0].drag_name, nearest[0].index) # НЕ РАБОТАЕТ >:(
+        drag[0].snap(*library.drags_pos[drag[0]])
 
     class ChordLibrary(Container):
         def __init__(self, **kwargs):
@@ -169,11 +237,8 @@ init python:
             for i, chord in enumerate(CHORDS):
                 drag_pos = self.grid.to_global(self.grid.get_cell_center_local((i % 3 - 1, i / 3)))
                 chord_frame = ChordFrame(chord)
-                drag = Drag(
-                    d=chord_frame,
-                    pos=drag_pos,
-                    draggable=True,
-                    droppable=False
+                drag = ChordDrag(
+                    chord, renpy.curry(library_button_dragged)(self), None, drag_pos
                 )
                 self.drags_pos[drag] = drag_pos
                 self.draggroup.add(drag)
@@ -227,13 +292,15 @@ screen chord_library(islands):
 screen play_space:
     zorder 0
     key "hide_windows" action NullAction()
+    key "game_menu" action NullAction()
+    $ Island.ALL_SLOTS = []
     viewport id "play_space":
         add Frame("backgrounds/playspace.png", tile=True)
         child_size PLAYSPACE_WIDTH, PLAYSPACE_HEIGHT
         xinitial INITIAL_POS[0]
         yinitial INITIAL_POS[1]
         draggable True
-        add Island(ISLAND_WIDTH, ISLAND_HEIGHT, pos=(0.5, 0.5), slots=16)
+        add Island(ISLAND_WIDTH, ISLAND_HEIGHT, pos=(0.5, 0.5), slots=16, drag_function=chord_block_dragged)
     add ChordLibrary()
 
 label disable_vn:
