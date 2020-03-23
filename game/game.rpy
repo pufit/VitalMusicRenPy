@@ -70,28 +70,6 @@ init python:
                    int(cell_pos[1] * (self.spacing[1] + self.spacing[3] + self.cell_height + 0.5))
 
 
-
-    def reset_library_button(grid, island, drags, dropped):
-            pos = (drags[0].x, drags[0].y)
-
-            def get_distance(slot, pos):
-                slot_screen_pos = (
-                    renpy.get_adjustment(XScrollValue("play_space")).value - PLAYSPACE_WIDTH * INITIAL_POS[0] - config.screen_width / 2,
-                    renpy.get_adjustment(YScrollValue("play_space")).value - PLAYSPACE_HEIGHT * INITIAL_POS[1] - config.screen_height / 2
-                )
-                print(slot.x, slot.y, pos[0], pos[1])
-                return max(abs(slot.x - pos[0]), abs(slot.y - pos[1]))
-
-
-            def find_closest():
-                for slot in island.slots:
-                    if get_distance(slot, pos) < SNAP_DISTANCE:
-                        return slot
-
-            print(find_closest())
-
-            drags[0].snap(*grid.get_cell(drags[0].drag_name))
-
     def ChordFrame(name):
         fixed = Fixed(xysize=(CHORD_SIZE, CHORD_SIZE))
         fixed.add(im.Scale(Image("icons/chords_frame_s.png"), CHORD_SIZE, CHORD_SIZE))
@@ -99,12 +77,7 @@ init python:
         fixed.update()
         return fixed
 
-    def transfer_drag(from_group, to_group, drag):
-        from_group.remove(drag)
-        to_group.add(drag)
-
     def chord_block_dragged(island, drag, drop):
-        print(drag[0], drop)
         if drop:
             drag[0].slot.attached = None
             drop.attach(drag[0])
@@ -148,13 +121,13 @@ init python:
             self.drag_group.remove(self)
 
     class Island(Container):
-        ALL_SLOTS = []
-        def __init__(self, width, height, pos, slots, drag_function, **kwargs):
+        def __init__(self, width, height, pos, slots, drag_function, global_slots_list, **kwargs):
             super(Island, self).__init__(**kwargs)
             self.width = width
             self.height = height
             self.pos = pos
             self.slots = slots
+            self.global_slots_list = global_slots_list
             self.add(Frame(
                 image=Frame(im.FactorScale("backgrounds/background_block.png", BORDER_WIDTH, BORDER_WIDTH), 200, 200),
                 xysize=(width, height),
@@ -173,7 +146,7 @@ init python:
                 slot_pos = self.grid.to_global(self.grid.get_cell_center_local((i, 0)))
                 slot = SlotDrag(im.Scale(Image("icons/chords_frame_s.png"), CHORD_SIZE, CHORD_SIZE), i + slots/2, pos=slot_pos)
                 self.chord_slots.append(slot)
-                Island.ALL_SLOTS.append((slot, self))
+                global_slots_list.append((slot, self))
                 self.draggroup.add(slot)
                 slot.snap(*slot_pos)
             self.add(self.draggroup)
@@ -182,11 +155,14 @@ init python:
             self.add_chord("Am", 1)
 
         def add_chord(self, name, slot, drag_pos=None):
+            target_pos = self.grid.to_global(self.grid.get_cell_center_local((-self.slots / 2 + slot, 0)))
             if drag_pos is None:
-                drag_pos = self.grid.to_global(self.grid.get_cell_center_local((-self.slots / 2 + slot, 0)))
+                drag_pos = target_pos
             chord = ChordDrag(name, self.drag_function, self.chord_slots[slot], pos=drag_pos)
             self.chord_slots[slot].attach(chord)
             self.draggroup.add(chord)
+            chord.snap(*target_pos, delay=0.1)
+            chord.top()
             self.update()
             return chord
 
@@ -204,7 +180,6 @@ init python:
     def library_button_dragged(library, drag, drop):
         def get_distance(slot):
             local_pos = slot[1].screen_to_local((drag[0].x, drag[0].y))
-            local_pos = local_pos[0] + drag[0].w // 2, local_pos[1] + drag[0].h // 2
             if abs(local_pos[0] - slot[0].x) < slot[1].grid.cell_width and \
                 abs(local_pos[1] - slot[0].y) < slot[1].grid.cell_height:
                 return max(
@@ -214,15 +189,24 @@ init python:
             else:
                 return float("inf")
 
-        nearest = min(Island.ALL_SLOTS, key=get_distance)
+        nearest = min(global_slots_list, key=get_distance)
+        local_pos = nearest[1].screen_to_local((drag[0].x, drag[0].y))
+        local_pos = int(local_pos[0]), int(local_pos[1])
         if not math.isinf(get_distance(nearest)):
-            chord = nearest[1].add_chord(drag[0].drag_name, nearest[0].index) # НЕ РАБОТАЕТ >:(
+            chord = nearest[1].add_chord(drag[0].drag_name, nearest[0].index)
         drag[0].snap(*library.drags_pos[drag[0]])
 
     class ChordLibrary(Container):
         def __init__(self, **kwargs):
             super(ChordLibrary, self).__init__(**kwargs)
             self.add(im.Scale(Image("icons/library_back.png"), *LIBRARY_BACKGROUND_SIZE, xalign=1.0))
+            self.add(ImageButton(
+                idle_image="icons/library_button.png",
+                action=Function(self.toggle),
+                xalign=1.0,
+                xoffset=-LIBRARY_BACKGROUND_SIZE[0]
+            ))
+            self.hidden = False
             self.grid = Grid(
                 cell_width=CHORD_SIZE,
                 cell_height=CHORD_SIZE,
@@ -245,63 +229,52 @@ init python:
             self.add(self.draggroup)
             self.update()
 
-            
-    
-screen chord_frame(name=''):
-    frame:
-        background im.Scale(Image("icons/chords_frame_s.png"), CHORD_SIZE, CHORD_SIZE)
-        xsize CHORD_SIZE
-        ysize CHORD_SIZE
-        vbox:
-            xalign 0.5
-            yalign 0.5
-            text "[name]"
+        def toggle(self):
+            global library_xpos
+            if self.hidden:
+                library_xpos = 0
+            else:
+                library_xpos = LIBRARY_BACKGROUND_SIZE[0]
+            self.hidden = not self.hidden
 
-screen chord_library(islands):
-    zorder 1
 
-    python:
-        library_grid = CustomGrid(
-            cell_width=CHORD_SIZE,
-            cell_height=CHORD_SIZE,
-            spacing=LIBRARY_SPACING,
-            cols=COLUMNS_IN_GRID,
-            origin_pos=(config.screen_width - LIBRARY_BACKGROUND_SIZE[0] + LIBRARY_SIDE_OFFSET_X, LIBRARY_TOP_OFFSET)
-        )
-        dragged_function = renpy.curry(reset_library_button)(library_grid, islands)
-
-    fixed:
-        align 0, 0
-        add "icons/library_back.png" xalign 1.0 size LIBRARY_BACKGROUND_SIZE
-        viewport:
-            scrollbars "vertical"
-            ypos LIBRARY_TOP_OFFSET
-            child_size 1920, 1200
-            draggroup:
-                for i, name in enumerate(CHORDS):
-                    drag:
-                        pos library_grid.add_cell(name)
-                        drag_name name
-                        use chord_frame(name)
-                        droppable False
-                        draggable True
-                        dragged dragged_function
-
+transform library_position(x):
+    subpixel True
+    linear 0.5 xpos x
                 
 
 screen play_space:
     zorder 0
     key "hide_windows" action NullAction()
-    key "game_menu" action NullAction()
-    $ Island.ALL_SLOTS = []
     viewport id "play_space":
         add Frame("backgrounds/playspace.png", tile=True)
         child_size PLAYSPACE_WIDTH, PLAYSPACE_HEIGHT
         xinitial INITIAL_POS[0]
         yinitial INITIAL_POS[1]
         draggable True
-        add Island(ISLAND_WIDTH, ISLAND_HEIGHT, pos=(0.5, 0.5), slots=16, drag_function=chord_block_dragged)
-    add ChordLibrary()
+        add main_island
+    hbox:
+        yalign 1.0
+        fixed:
+            add Solid("#f0f8ff")
+            xalign 0.0
+            ysize 0.2
+            xsize 500
+            hbox:
+                yalign 0.5
+                imagebutton:
+                    idle im.Scale("icons/play_button_idle.png", 175, 175)
+                    xmargin 38
+                imagebutton:
+                    idle im.Scale("icons/stop_button.png", 175, 175)
+                    xmargin 38
+        fixed:
+            add Solid("#e5e8ea")
+            xalign 0.0
+            ysize 0.2
+            xsize 1920 - 500
+    add chord_library at library_position(library_xpos)
+
 
 label disable_vn:
     $ quick_menu = False
@@ -318,4 +291,15 @@ label game:
     scene
     hide screen say
     call disable_vn
+    default global_slots_list = []
+    default chord_library = ChordLibrary()
+    default main_island = Island(
+        ISLAND_WIDTH,
+        ISLAND_HEIGHT,
+        global_slots_list=global_slots_list,
+        pos=(0.5, 0.5),
+        slots=16,
+        drag_function=chord_block_dragged
+    )
+    default library_xpos = 0
     call screen play_space
