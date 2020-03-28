@@ -40,6 +40,6 @@ label start:
     w "The work is simple, but it is necessary to be in time. I pay 1000$.
     OK? Agreed."
 
-    call game
+    call game from _call_game
 
     return

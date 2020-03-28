@@ -1,8 +1,17 @@
-init python:
+init -1 python:
     import math
+    import os
+    from Queue import Queue
+    from threading import Thread
     from renpy.display.layout import Container
     from renpy.display.layout import Fixed
     from renpy.display.layout import Grid as LayoutGrid
+
+    renpy.music.register_channel('chords')
+    renpy.music.register_channel('backing_track')
+
+
+    GAME_ROOT = os.path.join(config.basedir, "game")
 
     # Library init
 
@@ -39,6 +48,51 @@ init python:
     # Progress grid init
 
     HIDDEN_CHORDS = ["Am", "Em", "C", "Dm", "Am", "Em", "C", "Dm", "Am", "Em", "C", "Dm", "Am", "Em", "C", "Dm"]
+
+    # Music init
+
+    TIME_SIGNATURE = 4, 4
+    TEMPO = 90
+
+    import os
+
+    def get_quarter_notes_in_bar():
+        return 4.0 / TIME_SIGNATURE[1] * TIME_SIGNATURE[0]
+
+    def get_bar_length():
+        return 60.0 * 4 * TIME_SIGNATURE[0] / (TEMPO * TIME_SIGNATURE[1])
+
+    def generate_and_play(generators, args, sources):
+        def play():
+            threads = []
+            q = Queue()
+            for generator, arg in zip(generators, args):
+                threads.append(Thread(target=lambda gen, arg : q.put(gen(arg)), args=(generator, arg)))
+            for t in threads:
+                print(t.run)
+                t.start()
+            for t in threads:
+                t.join()
+
+            while not q.empty():
+                source = q.get()
+                renpy.music.play(source[0], loop=False, synchro_start=True, channel=source[1])
+            for source in sources:
+                renpy.music.play(source[0], loop=False, synchro_start=True, channel=source[1])
+        
+        Thread(target=play).start()
+
+    
+    def generate_chords(island):
+        generator = Generator(TIME_SIGNATURE, TEMPO)
+        for pos, chord in enumerate(island.get_chords_list()):
+            midi_chord = Chord(*parse_chord(chord))
+            for i in range(4):
+                generator.add_chord(midi_chord, (pos + float(i) / 4) * get_quarter_notes_in_bar(), get_quarter_notes_in_bar() / 4, 80)
+        generator.generate("chords_tmp")
+        processed_file = process_vst("mdaPiano.dll", "chords_tmp.midi")
+        return "audio/tmp/{0}".format(processed_file), "chords"
+
 
     def get_size(displayable):
         w, h = renpy.render(displayable, 0, 0, 0, 0).get_size()
@@ -132,12 +186,13 @@ init python:
                 **kwargs
             )
             self.slot = slot
+            self.name = name
 
         def remove(self):
             self.drag_group.remove(self)
 
     def set_island_pointer(island, drag):
-        pass
+        return NotImplemented
 
     class Island(Container):
         def __init__(self, width, height, pos, slots, drag_function, global_slots_list, **kwargs):
@@ -198,16 +253,19 @@ init python:
             self.update()
             return chord
 
-        def get_drag(self, name):
-            return self.draggroup.get_child_by_name(name)
-
-        def remove_drag(self, drag):
-            self.draggroup.remove(drag)
-
         def screen_to_local(self, pos):
             x_offset = renpy.get_adjustment(XScrollValue("play_space")).value
             y_offset = renpy.get_adjustment(YScrollValue("play_space")).value
             return (pos[0] + x_offset, pos[1] + y_offset)
+
+        def get_chords_list(self):
+            chords = []
+            for slot in self.chord_slots:
+                if slot.attached is not None and isinstance(slot.attached, ChordDrag):
+                    chords.append(slot.attached.name)
+                else:
+                    chords.append("Empty")
+            return chords
 
     def library_button_dragged(library, drag, drop):
         def get_distance(slot):
@@ -318,8 +376,10 @@ screen play_space:
                 xspacing 60
                 imagebutton:
                     idle im.Scale("icons/play_button_idle.png", 120, 120)
+                    action Function(generate_and_play, [generate_chords], [main_island], [("audio/guitar.mp3", "backing_track")])
                 imagebutton:
                     idle im.Scale("icons/stop_button.png", 120, 120)
+                    action [Stop('chords'), Stop('backing_track')]
         fixed:
             add Solid("#e5e8ea")
             xalign 0.0
@@ -359,9 +419,10 @@ label init_ui:
     default progress_grid = ProgressGrid(rows=1, cols=16, yspacing=10, xspacing=0)
     return
 
+
 label game:
     scene
     hide screen say
-    call disable_vn
-    call init_ui
+    call disable_vn from _call_disable_vn
+    call init_ui from _call_init_ui
     call screen play_space
