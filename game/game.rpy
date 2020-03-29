@@ -1,6 +1,7 @@
 init -1 python:
     import math
     import os
+    import time
     from Queue import Queue
     from threading import Thread
     from renpy.display.layout import Container
@@ -54,31 +55,44 @@ init -1 python:
     TIME_SIGNATURE = 4, 4
     TEMPO = 90
 
-    import os
-
     def get_quarter_notes_in_bar():
         return 4.0 / TIME_SIGNATURE[1] * TIME_SIGNATURE[0]
 
     def get_bar_length():
         return 60.0 * 4 * TIME_SIGNATURE[0] / (TEMPO * TIME_SIGNATURE[1])
 
-    def generate_and_play(generators, args, sources):
+    def generate_and_play(generators, args, sources, pointer):
         def play():
+
+            start_cell = pointer.get_cell()[0]
+            offset = (start_cell - pointer.start_cell) * get_bar_length()
+
+            def move_pointer():
+                for i in range(1, 17 - start_cell):
+                    while renpy.music.get_pos(sources[0][1]) < i * get_bar_length() + offset:
+                        if not renpy.music.is_playing(sources[0][1]):
+                            return
+                        time.sleep(0.1)
+                    pointer.move_to(start_cell + i)
+
             threads = []
             q = Queue()
             for generator, arg in zip(generators, args):
                 threads.append(Thread(target=lambda gen, arg : q.put(gen(arg)), args=(generator, arg)))
             for t in threads:
-                print(t.run)
                 t.start()
             for t in threads:
                 t.join()
 
             while not q.empty():
                 source = q.get()
-                renpy.music.play(source[0], loop=False, synchro_start=True, channel=source[1])
+                renpy.music.play("<from {0}>{1}".format(offset, source[0]), loop=False, synchro_start=True, channel=source[1])
             for source in sources:
-                renpy.music.play(source[0], loop=False, synchro_start=True, channel=source[1])
+                renpy.music.play("<from {0}>{1}".format(offset, source[0]), loop=False, synchro_start=True, channel=source[1])
+
+            move_pointer()
+            pointer.move_to(start_cell)
+                    
         
         Thread(target=play).start()
 
@@ -122,11 +136,9 @@ init -1 python:
         def to_local(self, pos):
             return pos[0] - self.origin_pos[0], pos[1] - self.origin_pos[1]
 
-        def snap_to_grid_local(self, local_pos):
+        def get_cell_by_pos_local(self, local_pos):
             x = local_pos[0] // (self.spacing[0] + self.spacing[2] + self.cell_width)
-            x = x if local_pos[0] >= 0 else x - 1
             y = local_pos[1] // (self.spacing[1] + self.spacing[3] + self.cell_height)
-            y = y if local_pos[1] >= 0 else y - 1
             return x, y
 
         def get_cell_center_local(self, cell_pos):
@@ -145,6 +157,7 @@ init -1 python:
         def change_name(self, name):
             self.text.text = name
 
+
     def chord_block_dragged(island, drag, drop):
         if drop:
             drag[0].slot.attached = None
@@ -153,10 +166,10 @@ init -1 python:
         else:
             drag[0].snap(drag[0].slot.x, drag[0].slot.y)
 
+
     class SlotDrag(Drag):
-        def __init__(self, image, index, pos, **kwargs):
+        def __init__(self, index, pos, **kwargs):
             super(SlotDrag, self).__init__(
-                d=image,
                 pos=pos,
                 drag_name="Slot" + str(index),
                 draggable=False,
@@ -171,6 +184,7 @@ init -1 python:
                 self.attached.remove()
             self.attached = drag
             drag.slot = self
+
 
     class ChordDrag(Drag):
         def __init__(self, name, drag_function, slot, pos, **kwargs):
@@ -191,8 +205,38 @@ init -1 python:
         def remove(self):
             self.drag_group.remove(self)
 
-    def set_island_pointer(island, drag):
-        return NotImplemented
+
+    class IslandPointer(Drag):
+        def __init__(self, grid, left_bound, right_bound, start_cell, **kwargs):
+            super(IslandPointer, self).__init__(**kwargs)
+            self.grid = grid
+            self.left_bound = left_bound
+            self.right_bound = right_bound
+            self.start_cell = start_cell
+
+        def move_to(self, cell_x):
+            if cell_x > self.right_bound:
+                return
+            target_x, target_y = self.grid.to_global(self.grid.get_cell_center_local((cell_x, 1)))
+            target_x -= int(self.w // 2)
+            target_y -= int(self.h // 2)
+            self.snap(target_x, target_y)
+
+        def event(self, ev, x, y, st):
+            cell_x, cell_y = self.get_cell(self.x + x, self.y + y)
+            if cell_x >= self.left_bound and cell_x <= self.right_bound:
+                x = self.grid.to_global(self.grid.get_cell_center_local((cell_x, cell_y)))[0] - self.x - self.w // 2
+                super(IslandPointer, self).event(ev, x, 0, st)
+            else:
+                super(IslandPointer, self).event(ev, 0, 0, st)
+
+        def get_cell(self, x=None, y=None):
+            if x is None:
+                x = self.x
+            if y is None:
+                y = self.y
+            return self.grid.get_cell_by_pos_local(self.grid.to_local((x, y)))
+
 
     class Island(Container):
         def __init__(self, width, height, pos, slots, drag_function, global_slots_list, **kwargs):
@@ -220,24 +264,33 @@ init -1 python:
             )
             self.chord_slots = []
             self.draggroup = DragGroup()
-            for i in range(-slots / 2, slots / 2):
+            self.start_cell_pos = -slots / 2
+            for i in range(self.start_cell_pos, self.start_cell_pos + slots):
                 slot_pos = self.grid.to_global(self.grid.get_cell_center_local((i, 0)))
                 slot = SlotDrag(
-                    image=im.Scale(Image("icons/chords_frame_s.png"), CHORD_SIZE, CHORD_SIZE),
+                    d=im.Scale(Image("icons/chords_frame_s.png"), CHORD_SIZE, CHORD_SIZE),
                     index=i + slots/2,
                     pos=slot_pos,
                     anchor=(0.5, 0.5)
                 )
-                slot.alternate = Function(renpy.curry(set_island_pointer)(self, slot))
                 self.chord_slots.append(slot)
                 global_slots_list.append((slot, self))
                 self.draggroup.add(slot)
                 slot.snap(*slot_pos)
             self.add(self.draggroup)
-
+            
             pointer_pos = self.grid.to_global(self.grid.get_cell_center_local((-slots / 2, 1)))
-            self.pointer = im.Scale(Image("icons/pointer_orange.png"), CHORD_SIZE*0.8, CHORD_SIZE*0.8, pos=pointer_pos, anchor=(0.5, 0.5))
-            self.add(self.pointer)
+            self.pointer = IslandPointer(
+                grid=self.grid,
+                left_bound=-slots / 2,
+                right_bound=slots / 2 - 1,
+                start_cell=self.start_cell_pos,
+                d=im.Scale(Image("icons/pointer_orange.png"), CHORD_SIZE*0.8, CHORD_SIZE*0.8),
+                pos=pointer_pos,
+                anchor=(0.5, 0.5),
+                drag_name="pointer"
+            )
+            self.draggroup.add(self.pointer)
 
             self.update()
 
@@ -266,6 +319,7 @@ init -1 python:
                 else:
                     chords.append("Empty")
             return chords
+
 
     def library_button_dragged(library, drag, drop):
         def get_distance(slot):
@@ -342,6 +396,7 @@ init -1 python:
                 library_xpos = 0
             self.hidden = not self.hidden
 
+
     class ProgressGrid(LayoutGrid):
         def __init__(self, **kwargs):
             super(ProgressGrid, self).__init__(**kwargs)
@@ -376,7 +431,7 @@ screen play_space:
                 xspacing 60
                 imagebutton:
                     idle im.Scale("icons/play_button_idle.png", 120, 120)
-                    action Function(generate_and_play, [generate_chords], [main_island], [("audio/guitar.mp3", "backing_track")])
+                    action Function(generate_and_play, [generate_chords], [main_island], [("audio/guitar.mp3", "backing_track")], main_island.pointer)
                 imagebutton:
                     idle im.Scale("icons/stop_button.png", 120, 120)
                     action [Stop('chords'), Stop('backing_track')]
