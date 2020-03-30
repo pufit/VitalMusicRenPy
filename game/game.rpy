@@ -23,7 +23,7 @@ init -1 python:
     CHORDS = ["Am", "Bm", "C", "Dm", "Em", "F", "G"]
 
     LIBRARY_BACKGROUND_SIZE_RAW = renpy.image_size("icons/library_back.png")
-    LIBRARY_BACKGROUND_SIZE = LIBRARY_BACKGROUND_SIZE_RAW[0] * config.screen_height // LIBRARY_BACKGROUND_SIZE_RAW[1], config.screen_height
+    LIBRARY_BACKGROUND_SIZE = LIBRARY_BACKGROUND_SIZE_RAW[0] * config.screen_height // LIBRARY_BACKGROUND_SIZE_RAW[1], config.screen_height - 150
 
     CHORD_SIZE = 120
 
@@ -51,7 +51,7 @@ init -1 python:
 
     # Progress grid init
 
-    HIDDEN_CHORDS = ["Am", "Em", "C", "Dm", "Am", "Em", "C", "Dm", "Am", "Em", "C", "Dm", "Am", "Em", "C", "Dm"]
+    HIDDEN_CHORDS = ["Am", "F", "C", "G", "Am", "F", "Em", "G", "Am", "C", "F", "G", "Am", "F", "Em", "C"]
 
     # Music init
 
@@ -107,6 +107,8 @@ init -1 python:
                 self.disabled = False
                 super(DisalableDrag, self).event(ev, x, y, st)
             else:
+                if self.is_focused() and ev.type == pygame.MOUSEBUTTONDOWN:
+                    renpy.notify("Stop music first")
                 if not self.disabled:
                     self.disabled = True
                     super(DisalableDrag, self).event(pygame.MOUSEBUTTONUP, x, y, st)
@@ -121,17 +123,17 @@ init -1 python:
             self.update()
 
         def change_name(self, name):
-            print(name)
             self.text.set_text(name)
 
 
     def chord_block_dragged(island, drag, drop):
+        drag[0].slot.attached = None
         if drop:
-            drag[0].slot.attached = None
+            renpy.play("audio/sfx/click.mp3")
             drop.attach(drag[0])
-            drag[0].snap(drop.x, drop.y, delay=0.1)
+            drag[0].snap(drop.x, drop.y)
         else:
-            drag[0].snap(drag[0].slot.x, drag[0].slot.y)
+            drag[0].remove()
 
 
     class SlotDrag(Drag):
@@ -184,12 +186,12 @@ init -1 python:
         def move_to(self, cell_x):
             if cell_x > self.right_bound:
                 return
-            child = self.style.child
-            if child is None:
-                child = self.child
             target_x, target_y = self.grid.to_global(self.grid.get_cell_center_local((cell_x, 1)))
             if self.w is None:
-                cr = render(child, width, height, st, at)
+                child = self.style.child
+                if child is None:
+                    child = self.child
+                cr = render(child, 200, 200, 0, 0)
                 self.w, self.h = cr.get_size()
             target_x -= int(self.w // 2)
             target_y -= int(self.h // 2)
@@ -217,6 +219,7 @@ init -1 python:
 
             self.width = width
             self.height = height
+            self.pos = pos
 
             self.slots = slots
             self.global_slots_list = global_slots_list
@@ -310,6 +313,7 @@ init -1 python:
         local_pos = nearest[1].screen_to_local((drag[0].x, drag[0].y))
         local_pos = int(local_pos[0]), int(local_pos[1])
         if not math.isinf(get_distance(nearest)):
+            renpy.play("audio/sfx/click.mp3")
             chord = nearest[1].add_chord(drag[0].drag_name, nearest[0].index)
         drag[0].snap(*library.drags_pos[drag[0]])
 
@@ -386,15 +390,18 @@ init -1 python:
     def get_bar_length():
         return 60.0 * 4 * TIME_SIGNATURE[0] / (TEMPO * TIME_SIGNATURE[1])
 
-    def generate_and_play(generators, args, sources, pointer, bar_callback):
-        def play():
+
+    def generate_and_play(generators, args, sources, pointer, bar_callback, play_stop_callback):
+        def run():
+            generate_and_play.active = True
+            DisalableDrag.disabled = True
 
             start_cell = pointer.get_cell()[0]
             offset = (start_cell - pointer.start_cell) * get_bar_length()
 
             def move_pointer():
                 for i in range(1, 17 - start_cell):
-                    bar_callback(i - 1)
+                    bar_callback(start_cell - pointer.start_cell + i - 1)
                     while renpy.music.get_pos(sources[0][1]) < i * get_bar_length() + offset:
                         if not renpy.music.is_playing(sources[0][1]):
                             return
@@ -403,7 +410,6 @@ init -1 python:
 
             threads = []
             q = Queue()
-            DisalableDrag.disabled = True
             for generator, arg in zip(generators, args):
                 threads.append(Thread(target=lambda gen, arg : q.put(gen(arg)), args=(generator, arg)))
             for t in threads:
@@ -411,6 +417,8 @@ init -1 python:
             for t in threads:
                 t.join()
 
+            generate_and_play.playing = True
+            play_stop_callback()
             while not q.empty():
                 source = q.get()
                 renpy.music.play("<from {0}>{1}".format(offset, source[0]), loop=False, synchro_start=True, channel=source[1])
@@ -419,10 +427,24 @@ init -1 python:
 
             move_pointer()
             pointer.move_to(start_cell)
+
+            play_stop_callback()
             DisalableDrag.disabled = False
-                    
-        
-        Thread(target=play).start()
+            generate_and_play.active = False
+            generate_and_play.playing = False
+
+            return
+
+        if generate_and_play.active:
+            if not generate_and_play.playing:
+                renpy.notify("Processing, please wait")
+            else:
+                renpy.notify("Already playing")
+            return
+        Thread(target=run).start()
+
+    generate_and_play.active = False
+    generate_and_play.playing = False
 
     def generate_chords(island):
         generator = Generator(TIME_SIGNATURE, TEMPO)
@@ -433,6 +455,7 @@ init -1 python:
         generator.generate("chords_tmp")
         processed_file = process_vst("mdaPiano.dll", "chords_tmp.midi")
         return "audio/tmp/{0}".format(processed_file), "chords"
+
 
     def check_chord(island, progress_grid, index):
         chords = island.get_chords_list()
@@ -466,17 +489,25 @@ screen play_space:
                 align 0.5, 0.5
                 xspacing 60
                 imagebutton:
+                    align 0.5, 0.5
                     idle im.Scale("icons/play_button_idle.png", 120, 120)
+                    hover im.Scale("icons/play_button_idle.png", 115, 115)
+                    selected_idle im.Scale("icons/play_button.png", 120, 120)
+                    selected_hover im.Scale("icons/play_button.png", 115, 115)
+                    selected generate_and_play.playing
                     action Function(
                         generate_and_play,
                         [generate_chords],
                         [main_island],
                         [("audio/guitar.mp3", "backing_track")],
                         main_island.pointer,
-                        renpy.curry(check_chord)(main_island, progress_grid)
+                        renpy.curry(check_chord)(main_island, progress_grid),
+                        renpy.restart_interaction
                     )
                 imagebutton:
+                    align 0.5, 0.5
                     idle im.Scale("icons/stop_button.png", 120, 120)
+                    hover im.Scale("icons/stop_button.png", 115, 115)
                     action [Stop('chords'), Stop('backing_track')]
         fixed:
             add Solid("#e5e8ea")

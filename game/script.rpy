@@ -18,9 +18,9 @@ label start:
 
     stop music fadeout 2.0
 
-    play sound "audio/cell-phone-vibrate-1.mp3" loop
+    play sound "audio/sfx/cell-phone-vibrate-1.mp3" loop
     "..."
-    play sound "audio/cell-phone-flip-1.mp3"
+    play sound "audio/sfx/cell-phone-flip-1.mp3"
 
     scene bg willie
     w "Hey, David, how're you? I'm glad to hear you still alive.
