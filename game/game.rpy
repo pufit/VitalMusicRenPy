@@ -1,12 +1,16 @@
 init -1 python:
+
     import math
     import os
+    import pygame_sdl2 as pygame
     import time
+    
     from Queue import Queue
-    from threading import Thread
     from renpy.display.layout import Container
     from renpy.display.layout import Fixed
     from renpy.display.layout import Grid as LayoutGrid
+    from renpy.display.render import render, redraw
+    from threading import Thread
 
     renpy.music.register_channel('chords')
     renpy.music.register_channel('backing_track')
@@ -32,7 +36,6 @@ init -1 python:
 
     library_grid = None
 
-
     # Play space init
 
     CHORD_SLOTS = 16
@@ -55,62 +58,8 @@ init -1 python:
     TIME_SIGNATURE = 4, 4
     TEMPO = 90
 
-    def get_quarter_notes_in_bar():
-        return 4.0 / TIME_SIGNATURE[1] * TIME_SIGNATURE[0]
 
-    def get_bar_length():
-        return 60.0 * 4 * TIME_SIGNATURE[0] / (TEMPO * TIME_SIGNATURE[1])
-
-    def generate_and_play(generators, args, sources, pointer):
-        def play():
-
-            start_cell = pointer.get_cell()[0]
-            offset = (start_cell - pointer.start_cell) * get_bar_length()
-
-            def move_pointer():
-                for i in range(1, 17 - start_cell):
-                    while renpy.music.get_pos(sources[0][1]) < i * get_bar_length() + offset:
-                        if not renpy.music.is_playing(sources[0][1]):
-                            return
-                        time.sleep(0.1)
-                    pointer.move_to(start_cell + i)
-
-            threads = []
-            q = Queue()
-            for generator, arg in zip(generators, args):
-                threads.append(Thread(target=lambda gen, arg : q.put(gen(arg)), args=(generator, arg)))
-            for t in threads:
-                t.start()
-            for t in threads:
-                t.join()
-
-            while not q.empty():
-                source = q.get()
-                renpy.music.play("<from {0}>{1}".format(offset, source[0]), loop=False, synchro_start=True, channel=source[1])
-            for source in sources:
-                renpy.music.play("<from {0}>{1}".format(offset, source[0]), loop=False, synchro_start=True, channel=source[1])
-
-            move_pointer()
-            pointer.move_to(start_cell)
-                    
-        
-        Thread(target=play).start()
-
-    
-    def generate_chords(island):
-        generator = Generator(TIME_SIGNATURE, TEMPO)
-        for pos, chord in enumerate(island.get_chords_list()):
-            midi_chord = Chord(*parse_chord(chord))
-            for i in range(4):
-                generator.add_chord(midi_chord, (pos + float(i) / 4) * get_quarter_notes_in_bar(), get_quarter_notes_in_bar() / 4, 80)
-        generator.generate("chords_tmp")
-        processed_file = process_vst("mdaPiano.dll", "chords_tmp.midi")
-        return "audio/tmp/{0}".format(processed_file), "chords"
-
-
-    def get_size(displayable):
-        w, h = renpy.render(displayable, 0, 0, 0, 0).get_size()
-        return w, h
+    DRAG_BLOCKED = False
         
 
     class Grid(object):
@@ -146,6 +95,23 @@ init -1 python:
                    int(cell_pos[1] * (self.spacing[1] + self.spacing[3] + self.cell_height) + self.cell_height // 2)
 
 
+    class DisalableDrag(Drag):
+        disabled = False
+
+        def __init__(self, **kwargs):
+            super(DisalableDrag, self).__init__(**kwargs)
+            self.disabled = False
+
+        def event(self, ev, x, y, st):
+            if not DisalableDrag.disabled:
+                self.disabled = False
+                super(DisalableDrag, self).event(ev, x, y, st)
+            else:
+                if not self.disabled:
+                    self.disabled = True
+                    super(DisalableDrag, self).event(pygame.MOUSEBUTTONUP, x, y, st)
+
+
     class ChordFrame(Container):
         def __init__(self, name, size=CHORD_SIZE):
             super(ChordFrame, self).__init__(xysize=(size, size))
@@ -155,7 +121,8 @@ init -1 python:
             self.update()
 
         def change_name(self, name):
-            self.text.text = name
+            print(name)
+            self.text.set_text(name)
 
 
     def chord_block_dragged(island, drag, drop):
@@ -186,7 +153,7 @@ init -1 python:
             drag.slot = self
 
 
-    class ChordDrag(Drag):
+    class ChordDrag(DisalableDrag):
         def __init__(self, name, drag_function, slot, pos, **kwargs):
             chord_frame = ChordFrame(name)
             super(ChordDrag, self).__init__(
@@ -217,14 +184,20 @@ init -1 python:
         def move_to(self, cell_x):
             if cell_x > self.right_bound:
                 return
+            child = self.style.child
+            if child is None:
+                child = self.child
             target_x, target_y = self.grid.to_global(self.grid.get_cell_center_local((cell_x, 1)))
+            if self.w is None:
+                cr = render(child, width, height, st, at)
+                self.w, self.h = cr.get_size()
             target_x -= int(self.w // 2)
             target_y -= int(self.h // 2)
             self.snap(target_x, target_y)
 
         def event(self, ev, x, y, st):
             cell_x, cell_y = self.get_cell(self.x + x, self.y + y)
-            if cell_x >= self.left_bound and cell_x <= self.right_bound:
+            if cell_x >= self.left_bound and cell_x <= self.right_bound and not DisalableDrag.disabled:
                 x = self.grid.to_global(self.grid.get_cell_center_local((cell_x, cell_y)))[0] - self.x - self.w // 2
                 super(IslandPointer, self).event(ev, x, 0, st)
             else:
@@ -402,6 +375,69 @@ init -1 python:
             super(ProgressGrid, self).__init__(**kwargs)
             for chord in HIDDEN_CHORDS:
                 self.add(ChordFrame("?", size=120))
+
+        def reveal_chord(self, index):
+            self.children[index].change_name(HIDDEN_CHORDS[index])
+
+    
+    def get_quarter_notes_in_bar():
+        return 4.0 / TIME_SIGNATURE[1] * TIME_SIGNATURE[0]
+
+    def get_bar_length():
+        return 60.0 * 4 * TIME_SIGNATURE[0] / (TEMPO * TIME_SIGNATURE[1])
+
+    def generate_and_play(generators, args, sources, pointer, bar_callback):
+        def play():
+
+            start_cell = pointer.get_cell()[0]
+            offset = (start_cell - pointer.start_cell) * get_bar_length()
+
+            def move_pointer():
+                for i in range(1, 17 - start_cell):
+                    bar_callback(i - 1)
+                    while renpy.music.get_pos(sources[0][1]) < i * get_bar_length() + offset:
+                        if not renpy.music.is_playing(sources[0][1]):
+                            return
+                        time.sleep(0.1)
+                    pointer.move_to(start_cell + i)
+
+            threads = []
+            q = Queue()
+            DisalableDrag.disabled = True
+            for generator, arg in zip(generators, args):
+                threads.append(Thread(target=lambda gen, arg : q.put(gen(arg)), args=(generator, arg)))
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+
+            while not q.empty():
+                source = q.get()
+                renpy.music.play("<from {0}>{1}".format(offset, source[0]), loop=False, synchro_start=True, channel=source[1])
+            for source in sources:
+                renpy.music.play("<from {0}>{1}".format(offset, source[0]), loop=False, synchro_start=True, channel=source[1])
+
+            move_pointer()
+            pointer.move_to(start_cell)
+            DisalableDrag.disabled = False
+                    
+        
+        Thread(target=play).start()
+
+    def generate_chords(island):
+        generator = Generator(TIME_SIGNATURE, TEMPO)
+        for pos, chord in enumerate(island.get_chords_list()):
+            midi_chord = Chord(*parse_chord(chord))
+            for i in range(4):
+                generator.add_chord(midi_chord, (pos + float(i) / 4) * get_quarter_notes_in_bar(), get_quarter_notes_in_bar() / 4, 80)
+        generator.generate("chords_tmp")
+        processed_file = process_vst("mdaPiano.dll", "chords_tmp.midi")
+        return "audio/tmp/{0}".format(processed_file), "chords"
+
+    def check_chord(island, progress_grid, index):
+        chords = island.get_chords_list()
+        if HIDDEN_CHORDS[index] == chords[index]:
+            progress_grid.reveal_chord(index)
                 
 
 transform library_position(x):
@@ -431,7 +467,14 @@ screen play_space:
                 xspacing 60
                 imagebutton:
                     idle im.Scale("icons/play_button_idle.png", 120, 120)
-                    action Function(generate_and_play, [generate_chords], [main_island], [("audio/guitar.mp3", "backing_track")], main_island.pointer)
+                    action Function(
+                        generate_and_play,
+                        [generate_chords],
+                        [main_island],
+                        [("audio/guitar.mp3", "backing_track")],
+                        main_island.pointer,
+                        renpy.curry(check_chord)(main_island, progress_grid)
+                    )
                 imagebutton:
                     idle im.Scale("icons/stop_button.png", 120, 120)
                     action [Stop('chords'), Stop('backing_track')]

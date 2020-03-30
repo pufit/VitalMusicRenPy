@@ -5,6 +5,8 @@ init python:
     def process_vst(plugin, midi_file):
         out_file_name = "{0}_{1}.wav".format(midi_file, plugin)
         plugin_root = "{0}/vst".format(GAME_ROOT)
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
         process = subprocess.Popen(
             [os.path.join(GAME_ROOT, "utils", "mrswatson.exe"),
             '--midi-file', os.path.join(GAME_ROOT, "midi", midi_file),
@@ -12,8 +14,10 @@ init python:
             '--output', os.path.join(GAME_ROOT, "audio", "tmp", out_file_name),
             '--tempo', str(TEMPO),
             '--time-signature', "{0}/{1}".format(TIME_SIGNATURE[0], TIME_SIGNATURE[1]),
-            '--quiet'
-            ])
+            '--quiet',
+            ],
+            startupinfo=startupinfo
+        )
         process.wait()
         return out_file_name
 
