@@ -124,7 +124,7 @@ init -1 python:
     class ChordFrame(Container):
         def __init__(self, name, size=CHORD_SIZE):
             super(ChordFrame, self).__init__(xysize=(size, size))
-            self.add(im.Scale(Image("icons/chords_frame_s.png"), size, size))
+            self.add(im.Scale(Image("icons/chords_frame.png"), size, size))
             self.text = Text(text=str(name), align=(0.5, 0.5))
             self.add(self.text)
             self.update()
@@ -257,7 +257,7 @@ init -1 python:
             for i in range(self.start_cell_pos, self.start_cell_pos + slots):
                 slot_pos = self.grid.to_global(self.grid.get_cell_center_local((i, 0)))
                 slot = SlotDrag(
-                    d=im.Scale(Image("icons/chords_frame_s.png"), CHORD_SIZE, CHORD_SIZE),
+                    d=im.Scale(Image("icons/chords_frame.png"), CHORD_SIZE, CHORD_SIZE),
                     index=i + slots/2,
                     pos=slot_pos,
                     anchor=(0.5, 0.5)
@@ -392,7 +392,7 @@ init -1 python:
         def __init__(self, **kwargs):
             super(ProgressGrid, self).__init__(**kwargs)
             for chord in HIDDEN_CHORDS:
-                self.add(ChordFrame("?", size=120))
+                self.add(ChordFrame("?", size=130))
             self.chords_status = [False] * len(HIDDEN_CHORDS)
 
         def reveal_chord(self, index):
@@ -506,7 +506,7 @@ screen play_space:
     hbox:
         yalign 1.0
         fixed:
-            add Solid("#f0f8ff")
+            add Solid("#AAAAAA")
             xalign 0.0
             ysize 150
             xsize 400
@@ -535,7 +535,7 @@ screen play_space:
                     hover im.Scale("icons/stop_button.png", 115, 115)
                     action [Stop('chords'), Stop('backing_track')]
         fixed:
-            add Solid("#e5e8ea")
+            add Solid("#AAAAAA")
             xalign 0.0
             ysize 150
             xsize 1920 - 400
@@ -548,14 +548,20 @@ screen play_space:
 
 screen tutorial(msg, complete_event):
     key complete_event action Return
+    key "hide_windows" action NullAction()
     modal is_tutorial_modal
     fixed:
-        image im.FactorScale("images/backgrounds/menu_background.png", 0.3)
+        image "images/backgrounds/menu_background.png"
         align 0, 0
         xysize 0.5, 0.5
-        text msg:
-            xsize 500
-            align 0.5, 0.5
+        # add Solid("#B87A33", area=(220, 112, 600, 330))
+        label msg:
+            background Solid("#B87A33", align=(0.5, 0.5))
+            xsize 600
+            align 0.6, 0.5
+            padding 30, 30
+            text_style "white_text"
+            
     
 
 label disable_vn:
@@ -602,7 +608,7 @@ label game:
     call screen tutorial("Every slot represents one bar of the whole track. Now you can try to press play button and you will hear the chord you placed when the track will reach this point.", "music_stopped")
     $ renpy.transition(dissolve)
     $ is_tutorial_modal = True
-    call screen tutorial("Near Play and Stop buttons you can find panel where blocks with question marks are placed. At the beginning of the level all of them are closed. To open it make a right chords sequence and listen to it. Correctly chosen chords will be opened.", "dismiss")
+    call screen tutorial("Near Play and Stop buttons you can see blocks with question marks. At the beginning of the level all of them are closed. To open it make a right chords sequence and listen to it. Correctly chosen chords will be opened.", "dismiss")
     $ renpy.transition(dissolve)
     $ is_tutorial_modal = False
     call screen tutorial("You can listen the track from any point you want by dragging the array beneath the chord blocks from left to right. Try it!", "pointer_moved")

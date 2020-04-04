@@ -36,9 +36,12 @@ style button_text is gui_text:
 style label_text is gui_text:
     properties gui.text_properties("label", accent=True)
 
+
 style prompt_text is gui_text:
     properties gui.text_properties("prompt")
 
+style white_text is gui_text:
+    color "#fff"
 
 style bar:
     ysize gui.bar_size
