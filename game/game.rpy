@@ -6,6 +6,7 @@ init -1 python:
     import time
     
     from Queue import Queue
+    from renpy.audio.audio import get_channel
     from renpy.display.layout import Container
     from renpy.display.layout import Fixed
     from renpy.display.layout import Grid as LayoutGrid
@@ -61,6 +62,12 @@ init -1 python:
 
     DRAG_BLOCKED = False
         
+
+    config.keymap["end_level"] = []
+    config.keymap["chord_placed"] = []
+    config.keymap["music_stopped"] = []
+    config.keymap["pointer_moved"] = []
+
 
     class Grid(object):
         def __init__(self, cell_width, cell_height, origin_pos, spacing=0):
@@ -177,11 +184,12 @@ init -1 python:
 
     class IslandPointer(Drag):
         def __init__(self, grid, left_bound, right_bound, start_cell, **kwargs):
-            super(IslandPointer, self).__init__(**kwargs)
+            super(IslandPointer, self).__init__(droppable=False, **kwargs)
             self.grid = grid
             self.left_bound = left_bound
             self.right_bound = right_bound
             self.start_cell = start_cell
+            self.last_cell_x = None
 
         def move_to(self, cell_x):
             if cell_x > self.right_bound:
@@ -202,6 +210,11 @@ init -1 python:
             if cell_x >= self.left_bound and cell_x <= self.right_bound and not DisalableDrag.disabled:
                 x = self.grid.to_global(self.grid.get_cell_center_local((cell_x, cell_y)))[0] - self.x - self.w // 2
                 super(IslandPointer, self).event(ev, x, 0, st)
+                if self.drag_moved:
+                    if self.last_cell_x is not None and cell_x != self.last_cell_x:
+                        renpy.queue_event("pointer_moved")
+                    self.last_cell_x = cell_x
+                    
             else:
                 super(IslandPointer, self).event(ev, 0, 0, st)
 
@@ -300,8 +313,8 @@ init -1 python:
     def library_button_dragged(library, drag, drop):
         def get_distance(slot):
             local_pos = slot[1].screen_to_local((drag[0].x, drag[0].y))
-            if abs(local_pos[0] - slot[0].x + drag[0].w // 2) < slot[1].grid.cell_width and \
-                abs(local_pos[1] - slot[0].y + drag[0].h // 2) < slot[1].grid.cell_height:
+            if abs(local_pos[0] - slot[0].x) < slot[1].grid.cell_width // 2 and \
+                abs(local_pos[1] - slot[0].y) < slot[1].grid.cell_height // 2:
                 return max(
                     abs(local_pos[0] - slot[0].x) < slot[1].grid.cell_width,
                     abs(local_pos[1] - slot[0].y) < slot[1].grid.cell_height
@@ -315,6 +328,7 @@ init -1 python:
         if not math.isinf(get_distance(nearest)):
             renpy.play("audio/sfx/click.mp3")
             chord = nearest[1].add_chord(drag[0].drag_name, nearest[0].index)
+            renpy.queue_event("chord_placed")
         drag[0].snap(*library.drags_pos[drag[0]])
 
 
@@ -379,11 +393,16 @@ init -1 python:
             super(ProgressGrid, self).__init__(**kwargs)
             for chord in HIDDEN_CHORDS:
                 self.add(ChordFrame("?", size=120))
+            self.chords_status = [False] * len(HIDDEN_CHORDS)
 
         def reveal_chord(self, index):
             self.children[index].change_name(HIDDEN_CHORDS[index])
+            self.chords_status[index] = True
+            if all(self.chords_status):
+                return True
 
-    
+
+
     def get_quarter_notes_in_bar():
         return 4.0 / TIME_SIGNATURE[1] * TIME_SIGNATURE[0]
 
@@ -391,7 +410,7 @@ init -1 python:
         return 60.0 * 4 * TIME_SIGNATURE[0] / (TEMPO * TIME_SIGNATURE[1])
 
 
-    def generate_and_play(generators, args, sources, pointer, bar_callback, play_stop_callback):
+    def generate_and_play(generators, args, sources, pointer, per_bar_callback, play_stop_callback):
         def run():
             generate_and_play.active = True
             DisalableDrag.disabled = True
@@ -401,7 +420,9 @@ init -1 python:
 
             def move_pointer():
                 for i in range(1, 17 - start_cell):
-                    bar_callback(start_cell - pointer.start_cell + i - 1)
+                    if per_bar_callback(start_cell - pointer.start_cell + i - 1):
+                        renpy.queue_event("end_level")
+                        return
                     while renpy.music.get_pos(sources[0][1]) < i * get_bar_length() + offset:
                         if not renpy.music.is_playing(sources[0][1]):
                             return
@@ -419,6 +440,7 @@ init -1 python:
 
             generate_and_play.playing = True
             play_stop_callback()
+            channels = []
             while not q.empty():
                 source = q.get()
                 renpy.music.play("<from {0}>{1}".format(offset, source[0]), loop=False, synchro_start=True, channel=source[1])
@@ -426,9 +448,10 @@ init -1 python:
                 renpy.music.play("<from {0}>{1}".format(offset, source[0]), loop=False, synchro_start=True, channel=source[1])
 
             move_pointer()
-            pointer.move_to(start_cell)
 
+            pointer.move_to(start_cell)
             play_stop_callback()
+            renpy.queue_event("music_stopped")
             DisalableDrag.disabled = False
             generate_and_play.active = False
             generate_and_play.playing = False
@@ -460,17 +483,19 @@ init -1 python:
     def check_chord(island, progress_grid, index):
         chords = island.get_chords_list()
         if HIDDEN_CHORDS[index] == chords[index]:
-            progress_grid.reveal_chord(index)
-                
+            if progress_grid.reveal_chord(index):
+                return True
+
 
 transform library_position(x):
     subpixel True
     linear 0.5 xpos x
-                
+
 
 screen play_space:
-    zorder 0
+    zorder -100
     key "hide_windows" action NullAction()
+    key "end_level" action Jump("after_game")
     viewport id "play_space":
         add Frame("backgrounds/playspace.png", tile=True)
         child_size PLAYSPACE_WIDTH, PLAYSPACE_HEIGHT
@@ -519,9 +544,19 @@ screen play_space:
                 draggable True
                 scrollbars "horizontal"
                 add progress_grid
-
     add chord_library at library_position(library_xpos)
 
+screen tutorial(msg, complete_event):
+    key complete_event action Return
+    modal is_tutorial_modal
+    fixed:
+        image im.FactorScale("images/backgrounds/menu_background.png", 0.3)
+        align 0, 0
+        xysize 0.5, 0.5
+        text msg:
+            xsize 500
+            align 0.5, 0.5
+    
 
 label disable_vn:
     $ quick_menu = False
@@ -548,10 +583,37 @@ label init_ui:
     default progress_grid = ProgressGrid(rows=1, cols=16, yspacing=10, xspacing=0)
     return
 
-
 label game:
     scene
-    hide screen say
     call disable_vn from _call_disable_vn
     call init_ui from _call_init_ui
-    call screen play_space
+    show screen play_space
+    $ renpy.choice_for_skipping()
+    define is_tutorial_modal = True
+    call screen tutorial("You’ve received your first task. You have the guitar part and you should write the same piano part. Before you start the task let’s take tutorial. Click to continue!", "dismiss")
+    $ renpy.transition(dissolve)
+    call screen tutorial("The main field is a place, where the chords should be placed. Chords are stored in the {b}CHORDS{/b} tab.", "dismiss")
+    $ chord_library.toggle()
+    $ renpy.transition(dissolve)
+    $ is_tutorial_modal = False
+    call screen tutorial("Try to put any chord on the main field. Drag the chord from library to any free slot.", "chord_placed")
+    $ renpy.transition(dissolve)
+    $ is_tutorial_modal = False
+    call screen tutorial("Every slot represents one bar of the whole track. Now you can try to press play button and you will hear the chord you placed when the track will reach this point.", "music_stopped")
+    $ renpy.transition(dissolve)
+    $ is_tutorial_modal = True
+    call screen tutorial("Near Play and Stop buttons you can find panel where blocks with question marks are placed. At the beginning of the level all of them are closed. To open it make a right chords sequence and listen to it. Correctly chosen chords will be opened.", "dismiss")
+    $ renpy.transition(dissolve)
+    $ is_tutorial_modal = False
+    call screen tutorial("You can listen the track from any point you want by dragging the array beneath the chord blocks from left to right. Try it!", "pointer_moved")
+    $ renpy.transition(dissolve)
+    $ is_tutorial_modal = True
+    call screen tutorial("Now try to reveal all hidden chords. That’s the end of tutorial. Good luck!", "dismiss")
+    $ renpy.transition(dissolve)
+    $ is_tutorial_modal = False
+    $ renpy.pause(hard=True)
+
+label after_game:
+    "You finished your task!"
+    pause get_bar_length()
+    $ renpy.transition(zoomout)

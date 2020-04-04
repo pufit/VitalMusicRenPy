@@ -97,7 +97,6 @@ style frame:
 
 screen say(who, what):
     style_prefix "say"
-
     window:
         id "window"
 

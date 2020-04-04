@@ -6,3 +6,6 @@ traceback.txt
 *.rpyb
 *.rpymc
 game/saves/*
+game/audio/tmp/*
+*.reapeacks
+*.code-workspace
