@@ -3,7 +3,6 @@
 define w = Character(_('Wille, the customer'), color="#fe9601")
 
 init python:
-    renpy.music.register_channel("chords", "sfx")
     renpy.music.register_channel("original", "sfx")
 
 

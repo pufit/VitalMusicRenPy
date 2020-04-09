@@ -52,8 +52,8 @@ init -1 python:
 
 
     class ChordFrame(Container):
-        def __init__(self, name, size=CHORD_SIZE):
-            super(ChordFrame, self).__init__(xysize=(size, size))
+        def __init__(self, name, size=CHORD_SIZE, **kwargs):
+            super(ChordFrame, self).__init__(xysize=(size, size), **kwargs)
             self.add(im.Scale(Image("icons/chords_frame.png"), size, size))
             self.text = Text(text=str(name), align=(0.5, 0.5))
             self.add(self.text)
