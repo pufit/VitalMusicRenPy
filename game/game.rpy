@@ -4,7 +4,6 @@ init -1 python:
     import pygame_sdl2 as pygame
     import time
     
-    from Queue import Queue
     from renpy.audio.audio import get_channel
     from renpy.display.layout import Container, Fixed, MultiBox
     from renpy.display.layout import Grid as LayoutGrid
@@ -182,48 +181,48 @@ init -1 python:
                 return True
 
 
-    def generate_and_play(generators, sources, pointer, per_bar_callback, play_stop_callback):
+    def generate_and_play(generators, sources, total_duration, pointer, per_step_callback, step, play_stop_callback):
         def run():
-            generate_and_play.active = True
-            DisalableDrag.disabled = True
-
-            start_cell = pointer.get_cell()[0]
-            offset = (start_cell - pointer.start_cell) * get_bar_length()
-
-            def start_playback(channels):
-                for i in range(1, 17 - start_cell):
-                    if per_bar_callback:
-                        if per_bar_callback(start_cell - pointer.start_cell + i - 1):
+            def start_playback():
+                for i in range(1, int(total_duration // step_duration) + 1):
+                    if per_step_callback:
+                        if per_step_callback(start_cell - pointer.start_cell + i - 1):
                             renpy.queue_event("end_level")
                             return
-                    while renpy.music.get_pos(channels[0]) < i * get_bar_length() + offset:
-                        if not renpy.music.is_playing(channels[0]):
+                    while renpy.music.get_pos("master") < i * step_duration + offset:
+                        if not renpy.music.is_playing("master"):
                             return
                         time.sleep(0.1)
                     pointer.move_to(start_cell + i)
 
+            generate_and_play.active = True
+            DisalableDrag.disabled = True
+
             threads = []
-            q = Queue()
+            generated = []
             for generator in generators:
-                threads.append(Thread(target=lambda gen : q.put(gen()), args=[generator]))
+                threads.append(Thread(target=lambda gen : generated.append(gen()), args=[generator]))
             for t in threads:
                 t.start()
             for t in threads:
                 t.join()
 
+            step_duration = get_bar_length() * step
+            start_cell = pointer.get_cell()[0]
+            offset = (start_cell - pointer.start_cell) * step_duration
+
             generate_and_play.playing = True
             if play_stop_callback:
                 play_stop_callback()
             channels = []
-            while not q.empty():
-                source = q.get()
+            for source in generated:
                 renpy.music.play("<from {0}>{1}".format(offset, source[0]), loop=False, synchro_start=True, channel=source[1])
                 channels.append(source[1])
             for source in sources:
                 renpy.music.play("<from {0}>{1}".format(offset, source[0]), loop=False, synchro_start=True, channel=source[1])
                 channels.append(source[1])
-
-            start_playback(channels)
+            renpy.music.play("<silence {0} from {1}>".format(total_duration, offset), loop=False, synchro_start=True, channel="master")
+            start_playback()
 
             pointer.move_to(start_cell)
             if play_stop_callback:
@@ -260,6 +259,7 @@ init -1 python:
         renpy.music.stop(channel="chords")
         renpy.music.stop(channel="backing_track")
         renpy.music.stop(channel="melody")
+        renpy.music.stop(channel="master")
 
 
 transform library_position(x):
@@ -297,11 +297,13 @@ screen level1:
                     selected generate_and_play.playing
                     action Function(
                         generate_and_play,
-                        [chord_island.generate_audio],
-                        [("audio/guitar.mp3", "backing_track")],
-                        chord_island.pointer,
-                        renpy.curry(check_chord)(chord_island, progress_grid),
-                        renpy.restart_interaction
+                        generators=[chord_island.generate_audio],
+                        sources=[("audio/guitar.mp3", "backing_track")],
+                        total_duration=16 * get_bar_length(),
+                        pointer=chord_island.pointer,
+                        per_step_callback=renpy.curry(check_chord)(chord_island, progress_grid),
+                        step=1,
+                        play_stop_callback=renpy.restart_interaction
                     )
                 imagebutton:
                     align 0.5, 0.5
@@ -411,64 +413,57 @@ label after_game:
 
 
 init -1 python:
-
-    class NoteButton(ImageButton):
-        def __init__(self, note_width, note_height, selector, note, **kwargs):
-            super(NoteButton, self).__init__(
-                idle_image=im.Scale("images/icons/menu_frame_orange.png", note_width, note_height),
-                selected_idle_image=im.Scale("images/icons/menu_frame_green.png", note_width, note_height),
-                selected_hover_image=im.Scale("images/icons/menu_frame_green.png", note_width, note_height),
-                selected=False,
-                **kwargs
-            )
-            self.action = Function(selector.activate_button, self)
-            self.note = note
         
 
-    class NoteSelector(MultiBox):
-        def __init__(self, note_width, note_height, notes, pos, **kwargs):
-            super(NoteSelector, self).__init__(layout="vertical", style="vbox", pos=pos, **kwargs)
-            self.note_buttons = []
-            self.active_button = None
-            for note in notes:
-                button = NoteButton(note_width, note_height, self, note)
-                self.add(button)
-                self.note_buttons.append(button)
-            self.update()
+    class NoteSelector(Window):
+        def __init__(self, notes, pos, **kwargs):
+            super(NoteSelector, self).__init__(style="button", pos=pos, **kwargs)
+            self.focusable = True
+            self.state_children = { note : im.Scale("images/icons/note_selector/{0}.png".format(i), NOTE_SELECTOR_WIDTH, NOTE_SELECTOR_HEIGHT) for i, note in enumerate(notes) }
+            self.state_children[None] = im.Scale("images/icons/note_selector/none.png", NOTE_SELECTOR_WIDTH, NOTE_SELECTOR_HEIGHT)
+            self.selected_note = None
+            self.notes = notes
 
-        def activate_button(self, button):
-            if self.active_button:
-                self.active_button.selected = False
-            self.active_button = button
-            self.active_button.selected = True
-            renpy.restart_interaction()
+
+        def event(self, ev, x, y, st):
+            if x < 0 or y < 0 or x > NOTE_SELECTOR_WIDTH or y > NOTE_SELECTOR_HEIGHT:
+                return None
+            if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+                target = int(y // NOTE_SELECTOR_WIDTH)
+                if self.notes[target] == self.selected_note:
+                    self.selected_note = None
+                else:
+                    self.selected_note = self.notes[target]
+                renpy.restart_interaction()
+            return None
+            
+        def get_child(self):
+            return self.state_children[self.selected_note]
+
+        def visit(self):
+            return list(self.state_children.values())
 
         def get_active_note(self):
-            if not self.active_button:
-                return None
-            return self.active_button.note
+            return self.selected_note
 
 
 
     class MelodyIsland(Island):
         def __init__(self, width, height, pos, minimal_note_length, available_notes, bars,  **kwargs):
-            selector_height = float(len(available_notes)) * NOTE_HEIGHT
             super(MelodyIsland, self).__init__(
                 width=width,
                 height=height,
                 pos=pos,
-                cell_width=int(WHOLE_NOTE_WIDTH * minimal_note_length),
-                cell_height=int(selector_height),
-                grid_origin_offset=(0, -selector_height / 2),
+                cell_width=NOTE_SELECTOR_WIDTH,
+                cell_height=NOTE_SELECTOR_HEIGHT,
+                grid_origin_offset=(0, -int(NOTE_SELECTOR_HEIGHT / 2)),
                 **kwargs
             )
             self.minimal_note_length = minimal_note_length
             self.available_notes = available_notes
             self.selectors = []
-            for i in range(-bars // 2, bars // 2):
+            for i in range(-int(bars / minimal_note_length) // 2, int(bars / minimal_note_length) // 2):
                 selector = NoteSelector(
-                        note_width=int(minimal_note_length * WHOLE_NOTE_WIDTH),
-                        note_height=NOTE_HEIGHT,
                         notes=available_notes,
                         pos=self.grid.to_global(self.grid.get_cell_center_local((i, 0))),
                         anchor=(0.5, 0.5)
@@ -476,12 +471,12 @@ init -1 python:
                 self.add(selector)
                 self.selectors.append(selector)
             self.draggroup = DragGroup()
-            pointer_pos = self.grid.to_global(self.grid.get_cell_center_local((-bars // 2, 1)))
+            pointer_pos = self.grid.to_global(self.grid.get_cell_center_local((-int(bars / minimal_note_length) // 2, 1)))
             self.pointer = IslandPointer(
                 grid=self.grid,
-                left_bound=-bars // 2,
-                right_bound=bars // 2 - 1,
-                start_cell=-bars // 2,
+                left_bound=-int(bars / minimal_note_length) // 2,
+                right_bound=int(bars / minimal_note_length) // 2 - 1,
+                start_cell=-int(bars / minimal_note_length) // 2,
                 d=im.Scale(Image("icons/note_pointer.png"), 40, 40),
                 pos=pointer_pos,
                 anchor=(0.5, 0.5),
@@ -519,12 +514,12 @@ init -1 python:
 
 label init_level2:
     $ melody_island = MelodyIsland(
+        3000,
         1000,
-        500,
         pos=(0.5, 0.5),
         minimal_note_length=0.25,
         available_notes=["A", "B", "C", "D", "E", "F", "G"],
-        bars=8
+        bars=16
     )
     return
 
@@ -559,11 +554,13 @@ screen level2:
                     selected generate_and_play.playing
                     action Function(
                         generate_and_play,
-                        [melody_island.generate_audio],
-                        [],
-                        melody_island.pointer,
-                        None,
-                        renpy.restart_interaction
+                        generators=[melody_island.generate_audio],
+                        sources=[],
+                        total_duration=16 * get_bar_length(),
+                        pointer=melody_island.pointer,
+                        per_step_callback=None,
+                        step=melody_island.minimal_note_length,
+                        play_stop_callback=renpy.restart_interaction
                     )
                 imagebutton:
                     align 0.5, 0.5

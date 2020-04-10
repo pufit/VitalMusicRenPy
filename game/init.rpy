@@ -17,8 +17,9 @@ init -1000 python:
     LIBRARY_BACKGROUND_SIZE = LIBRARY_BACKGROUND_SIZE_RAW[0] * config.screen_height // LIBRARY_BACKGROUND_SIZE_RAW[1], config.screen_height - 150
 
     CHORD_SIZE = 120
-    NOTE_HEIGHT = 30
-    WHOLE_NOTE_WIDTH = 200
+    NOTE_SELECTOR_SIZE_RAW = renpy.image_size("icons/note_selector/none.png")
+    NOTE_SELECTOR_HEIGHT = 400
+    NOTE_SELECTOR_WIDTH = int(NOTE_SELECTOR_SIZE_RAW[0] * (float(NOTE_SELECTOR_HEIGHT) / NOTE_SELECTOR_SIZE_RAW[1]))
 
     COLUMNS_IN_GRID = 3
 
@@ -47,6 +48,8 @@ init -1000 python:
     renpy.music.register_channel('chords')
     renpy.music.register_channel('backing_track')
     renpy.music.register_channel('melody')
+    renpy.music.register_channel('master')
+    renpy.music.register_channel('util')
 
     TIME_SIGNATURE = 4, 4
     TEMPO = 90
