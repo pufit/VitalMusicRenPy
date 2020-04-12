@@ -434,13 +434,14 @@ init -1 python:
         active_block_right = im.Scale("images/icons/note_selector/active_block_r.png", NOTE_SELECTOR_WIDTH, NOTE_SELECTOR_HEIGHT)
         active_block_middle = im.Scale("images/icons/note_selector/active_block_m.png", NOTE_SELECTOR_WIDTH, NOTE_SELECTOR_HEIGHT)
 
-        def __init__(self, notes, pos, left_selector=None, right_selector=None, **kwargs):
+        def __init__(self, notes, pos, island, left_selector=None, right_selector=None, **kwargs):
             super(NoteSelector, self).__init__(pos=pos, xysize=(NOTE_SELECTOR_WIDTH, NOTE_SELECTOR_HEIGHT * len(notes)), **kwargs)
             self.notes = notes
             self.active_block_index = None
             self.active_block = None
             self.left_selector = left_selector
             self.right_selector = right_selector
+            self.island = island
 
         def update_active_block_state(self):
             has_right_neighbor = False
@@ -493,6 +494,7 @@ init -1 python:
                 if self.left_selector:
                     self.left_selector.update_active_block_state()
 
+                self.island.audio_dirty = True
                 renpy.redraw(self, 0)
             return None
 
@@ -518,19 +520,23 @@ init -1 python:
             self.minimal_note_length = minimal_note_length
             self.available_notes = available_notes
             self.selectors = []
+            self.audio_dirty = True
+            self.last_audio = None
             for i in range(-int(bars / minimal_note_length) // 2, int(bars / minimal_note_length) // 2):
                 if not self.selectors:
                     selector = NoteSelector(
                         notes=available_notes,
                         pos=self.grid.to_global(self.grid.get_cell_center_local((i, 0))),
-                        anchor=(0.5, 0.5)
+                        anchor=(0.5, 0.5),
+                        island=self
                     )
                 else:
                     selector = NoteSelector(
                             notes=available_notes,
                             pos=self.grid.to_global(self.grid.get_cell_center_local((i, 0))),
                             anchor=(0.5, 0.5),
-                            left_selector=self.selectors[-1]
+                            left_selector=self.selectors[-1],
+                            island=self
                         )
                     self.selectors[-1].right_selector=selector
                 self.add(selector)
@@ -561,43 +567,46 @@ init -1 python:
 
 
         def generate_audio(self):
-            generator = Generator(TIME_SIGNATURE, TEMPO)
-            notes_list = self.get_notes_list()
-            last_note = None
-            last_note_duration = None
-            last_note_pos = None
-            for note_pos, note in enumerate(notes_list):
-                if note != last_note:
-                    if last_note != None:
-                        generator.add_note(
+            if self.audio_dirty:
+                generator = Generator(TIME_SIGNATURE, TEMPO)
+                notes_list = self.get_notes_list()
+                last_note = None
+                last_note_duration = None
+                last_note_pos = None
+                for note_pos, note in enumerate(notes_list):
+                    if note != last_note:
+                        if last_note != None:
+                            generator.add_note(
+                                Note(
+                                    note_name=NoteName[last_note],
+                                    octave=3 - (1 if last_note == "B" else 0)
+                                ),
+                                time=last_note_pos * get_quarter_notes_in_bar() * self.minimal_note_length,
+                                duration=last_note_duration * get_quarter_notes_in_bar() * self.minimal_note_length,
+                                volume=80
+                            )
+                        last_note = note
+                        last_note_duration = 1
+                        last_note_pos = note_pos
+                    else:
+                        if last_note != None:
+                            last_note_duration += 1
+                if last_note != None:
+                    generator.add_note(
                             Note(
                                 note_name=NoteName[last_note],
-                                octave=3 - (1 if last_note == "B" else 0)
+                                octave=2
                             ),
                             time=last_note_pos * get_quarter_notes_in_bar() * self.minimal_note_length,
-                            duration=last_note_duration * get_quarter_notes_in_bar() * self.minimal_note_length,
-                            volume=80
+                            duration=last_note_duration * self.minimal_note_length,
+                            volume=100
                         )
-                    last_note = note
-                    last_note_duration = 1
-                    last_note_pos = note_pos
-                else:
-                    if last_note != None:
-                        last_note_duration += 1
-            if last_note != None:
-                generator.add_note(
-                        Note(
-                            note_name=NoteName[last_note],
-                            octave=2
-                        ),
-                        time=last_note_pos * get_quarter_notes_in_bar() * self.minimal_note_length,
-                        duration=last_note_duration * self.minimal_note_length,
-                        volume=100
-                    )
-            generator.generate("melody_tmp")
-            processed_file = process_vst("BJAM 2.dll", midi_file="melody_tmp.midi")
-            processed_file = process_vst("Sc32_JykWrakker_Mono.dll", audio_file=processed_file, parameters=AMP_SIM_PARAMETERS)
-            return "audio/tmp/{0}".format(processed_file), "melody"
+                generator.generate("melody_tmp")
+                processed_file = process_vst("BJAM 2.dll", midi_file="melody_tmp.midi")
+                processed_file = process_vst("Sc32_JykWrakker_Mono.dll", audio_file=processed_file, parameters=AMP_SIM_PARAMETERS)
+                self.last_audio = "audio/tmp/{0}".format(processed_file)
+                self.audio_dirty = False
+            return self.last_audio, "melody"
 
 
 

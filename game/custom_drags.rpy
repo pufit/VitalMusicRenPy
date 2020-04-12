@@ -117,7 +117,7 @@ init -1 python:
         def move_to(self, cell_x):
             if cell_x > self.right_bound:
                 return
-            target_x, target_y = self.grid.to_global(self.grid.get_cell_center_local((cell_x, 1)))
+            target_x = self.grid.to_global(self.grid.get_cell_center_local((cell_x, 1)))[0]
             if self.w is None:
                 child = self.style.child
                 if child is None:
@@ -125,8 +125,7 @@ init -1 python:
                 cr = render(child, 200, 200, 0, 0)
                 self.w, self.h = cr.get_size()
             target_x -= int(self.w // 2)
-            target_y -= int(self.h // 2)
-            self.snap(target_x, target_y)
+            self.snap(target_x, self.y)
 
         def event(self, ev, x, y, st):
             cell_x, cell_y = self.get_cell(self.x + x, self.y + y)
