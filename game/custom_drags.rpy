@@ -62,14 +62,17 @@ init -1 python:
         def change_name(self, name):
             self.text.set_text(name)
 
+    def dropped_to_slot(island, drop, drags):
+        island.audio_dirty = True
 
     class SlotDrag(Drag):
-        def __init__(self, index, pos, **kwargs):
+        def __init__(self, index, island, pos, **kwargs):
             super(SlotDrag, self).__init__(
                 pos=pos,
                 drag_name="Slot" + str(index),
                 draggable=False,
                 droppable=True,
+                dropped=renpy.curry(dropped_to_slot)(island),
                 **kwargs
             )
             self.index = index

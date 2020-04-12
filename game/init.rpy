@@ -17,9 +17,9 @@ init -1000 python:
     LIBRARY_BACKGROUND_SIZE = LIBRARY_BACKGROUND_SIZE_RAW[0] * config.screen_height // LIBRARY_BACKGROUND_SIZE_RAW[1], config.screen_height - 150
 
     CHORD_SIZE = 120
-    NOTE_SELECTOR_SIZE_RAW = renpy.image_size("icons/note_selector/none.png")
-    NOTE_SELECTOR_HEIGHT = 400
-    NOTE_SELECTOR_WIDTH = int(NOTE_SELECTOR_SIZE_RAW[0] * (float(NOTE_SELECTOR_HEIGHT) / NOTE_SELECTOR_SIZE_RAW[1]))
+    NOTE_SELECTOR_SIZE_RAW = renpy.image_size("icons/note_selector/inactive_block.png")
+    NOTE_SELECTOR_HEIGHT = 40
+    NOTE_SELECTOR_WIDTH = 60
 
     COLUMNS_IN_GRID = 3
 
@@ -30,7 +30,7 @@ init -1000 python:
 
     # Play space init
 
-    PLAYSPACE_WIDTH = 5000
+    PLAYSPACE_WIDTH = 7000
     PLAYSPACE_HEIGHT = 3000
 
     BORDER_WIDTH = 0.3
@@ -53,3 +53,15 @@ init -1000 python:
 
     TIME_SIGNATURE = 4, 4
     TEMPO = 90
+
+    AMP_SIM_PARAMETERS = [
+        "--parameter", "4,0.4", # gain
+        "--parameter", "5,1.0", # bright
+        "--parameter", "6,0.4", # chanel
+        "--parameter", "7,0.395", # bass
+        "--parameter", "8,0.55", # mid
+        "--parameter", "9,0.46", # treble
+        "--parameter", "10,0.395", # presence
+        "--parameter", "11,0.395", # contour (?)
+        "--parameter", "13,0.0", # filter
+    ]

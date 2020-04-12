@@ -55,6 +55,7 @@ init -1 python:
                 slot = SlotDrag(
                     d=im.Scale(Image("icons/chords_frame.png"), CHORD_SIZE, CHORD_SIZE),
                     index=i + slots/2,
+                    island=self,
                     pos=slot_pos,
                     anchor=(0.5, 0.5)
                 )
@@ -63,6 +64,8 @@ init -1 python:
                 self.draggroup.add(slot)
                 slot.snap(*slot_pos)
             self.add(self.draggroup)
+            self.audio_dirty = True
+            self.last_audio = None
             
             pointer_pos = self.grid.to_global(self.grid.get_cell_center_local((-slots / 2, 1)))
             self.pointer = IslandPointer(
@@ -88,6 +91,7 @@ init -1 python:
             self.draggroup.add(chord)
             chord.snap(*target_pos, delay=0.1)
             chord.top()
+            self.audio_dirty = True
             self.update()
             return chord
 
@@ -101,14 +105,18 @@ init -1 python:
             return chords
 
         def generate_audio(self):
-            generator = Generator(TIME_SIGNATURE, TEMPO)
-            for pos, chord in enumerate(self.get_chords_list()):
-                midi_chord = Chord(*parse_chord(chord))
-                for i in range(4):
-                    generator.add_chord(midi_chord, (pos + float(i) / 4) * get_quarter_notes_in_bar(), get_quarter_notes_in_bar() / 4, 80)
-            generator.generate("chords_tmp")
-            processed_file = process_vst("mdaPiano.dll", "chords_tmp.midi")
-            return "audio/tmp/{0}".format(processed_file), "chords"
+            if self.audio_dirty:
+                generator = Generator(TIME_SIGNATURE, TEMPO)
+                for pos, chord in enumerate(self.get_chords_list()):
+                    midi_chord = Chord(*parse_chord(chord))
+                    for i in range(4):
+                        generator.add_chord(midi_chord, (pos + float(i) / 4) * get_quarter_notes_in_bar(), get_quarter_notes_in_bar() / 4, 80)
+                generator.generate("chords_tmp")
+                processed_file = process_vst("mdaPiano.dll", midi_file="chords_tmp.midi")
+                self.audio_dirty = False
+                self.last_audio = "audio/tmp/{0}".format(processed_file)
+            return self.last_audio, "chords"
+            
 
 
     class ChordLibrary(Container):
@@ -192,11 +200,12 @@ init -1 python:
                     while renpy.music.get_pos("master") < i * step_duration + offset:
                         if not renpy.music.is_playing("master"):
                             return
-                        time.sleep(0.1)
+                        time.sleep(0.2)
                     pointer.move_to(start_cell + i)
 
             generate_and_play.active = True
             DisalableDrag.disabled = True
+            NoteSelector.disabled = True
 
             threads = []
             generated = []
@@ -228,6 +237,8 @@ init -1 python:
             if play_stop_callback:
                 play_stop_callback()
             renpy.queue_event("music_stopped")
+
+            NoteSelector.disabled = False
             DisalableDrag.disabled = False
             generate_and_play.active = False
             generate_and_play.playing = False
@@ -375,8 +386,8 @@ label game:
     call screen tutorial("You’ve received your first task. You have the guitar part and you should write the same piano part. Before you start the task let’s take tutorial. Click to continue!", "dismiss")
     $ renpy.transition(dissolve)
     call screen tutorial("The main field is a place, where the chords should be placed. Chords are stored in the {b}CHORDS{/b} tab.", "dismiss")
-    $ chord_library.toggle()
     $ renpy.transition(dissolve)
+    $ chord_library.toggle()
     $ is_tutorial_modal = False
     call screen tutorial("Try to put any chord on the main field. Drag the chord from library to any free slot.", "chord_placed")
     $ renpy.transition(dissolve)
@@ -413,38 +424,83 @@ label after_game:
 
 
 init -1 python:
-        
 
-    class NoteSelector(Window):
-        def __init__(self, notes, pos, **kwargs):
-            super(NoteSelector, self).__init__(style="button", pos=pos, **kwargs)
-            self.focusable = True
-            self.state_children = { note : im.Scale("images/icons/note_selector/{0}.png".format(i), NOTE_SELECTOR_WIDTH, NOTE_SELECTOR_HEIGHT) for i, note in enumerate(notes) }
-            self.state_children[None] = im.Scale("images/icons/note_selector/none.png", NOTE_SELECTOR_WIDTH, NOTE_SELECTOR_HEIGHT)
-            self.selected_note = None
+    class NoteSelector(renpy.Displayable):
+        disabled = False
+
+        inactive_block = im.Scale("images/icons/note_selector/inactive_block.png", NOTE_SELECTOR_WIDTH, NOTE_SELECTOR_HEIGHT)
+        active_block_single = im.Scale("images/icons/note_selector/active_block.png", NOTE_SELECTOR_WIDTH, NOTE_SELECTOR_HEIGHT)
+        active_block_left = im.Scale("images/icons/note_selector/active_block_l.png", NOTE_SELECTOR_WIDTH, NOTE_SELECTOR_HEIGHT)
+        active_block_right = im.Scale("images/icons/note_selector/active_block_r.png", NOTE_SELECTOR_WIDTH, NOTE_SELECTOR_HEIGHT)
+        active_block_middle = im.Scale("images/icons/note_selector/active_block_m.png", NOTE_SELECTOR_WIDTH, NOTE_SELECTOR_HEIGHT)
+
+        def __init__(self, notes, pos, left_selector=None, right_selector=None, **kwargs):
+            super(NoteSelector, self).__init__(pos=pos, xysize=(NOTE_SELECTOR_WIDTH, NOTE_SELECTOR_HEIGHT * len(notes)), **kwargs)
             self.notes = notes
+            self.active_block_index = None
+            self.active_block = None
+            self.left_selector = left_selector
+            self.right_selector = right_selector
 
+        def update_active_block_state(self):
+            has_right_neighbor = False
+            has_left_neighbor = False
+
+            if self.right_selector and self.right_selector.active_block_index == self.active_block_index:
+                has_right_neighbor = True
+
+            if self.left_selector and self.left_selector.active_block_index == self.active_block_index:
+                has_left_neighbor = True
+
+            if has_left_neighbor and has_right_neighbor:
+                self.active_block = NoteSelector.active_block_middle
+            elif has_left_neighbor:
+                self.active_block = NoteSelector.active_block_right
+            elif has_right_neighbor:
+                self.active_block = NoteSelector.active_block_left
+            else:
+                self.active_block = NoteSelector.active_block_single
+
+            renpy.redraw(self, 0)
+
+        def render(self, width, height, st, at):
+            render = renpy.Render(width, height)
+            inactive_render = renpy.Render(width, height / NOTE_SELECTOR_HEIGHT)
+            inactive_render.place(NoteSelector.inactive_block)
+            for i in range(len(self.notes)):
+                if i != self.active_block_index:
+                    render.blit(inactive_render, pos=(0, i * NOTE_SELECTOR_HEIGHT))
+            if self.active_block_index != None:
+                render.place(self.active_block, y=self.active_block_index * NOTE_SELECTOR_HEIGHT)
+            return render
 
         def event(self, ev, x, y, st):
-            if x < 0 or y < 0 or x > NOTE_SELECTOR_WIDTH or y > NOTE_SELECTOR_HEIGHT:
+            if x < 0 or y < 0 or x > NOTE_SELECTOR_WIDTH or y > NOTE_SELECTOR_HEIGHT * len(self.notes):
                 return None
             if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
-                target = int(y // NOTE_SELECTOR_WIDTH)
-                if self.notes[target] == self.selected_note:
-                    self.selected_note = None
+                if NoteSelector.disabled:
+                    renpy.notify("Stop music first")
+                    return None
+                target = int(y // NOTE_SELECTOR_HEIGHT)
+                if self.active_block_index == target:
+                    self.active_block_index = None
                 else:
-                    self.selected_note = self.notes[target]
-                renpy.restart_interaction()
-            return None
-            
-        def get_child(self):
-            return self.state_children[self.selected_note]
+                    self.active_block_index = target
+                    self.update_active_block_state()
 
-        def visit(self):
-            return list(self.state_children.values())
+                if self.right_selector:
+                        self.right_selector.update_active_block_state()
+                if self.left_selector:
+                    self.left_selector.update_active_block_state()
+
+                renpy.redraw(self, 0)
+            return None
 
         def get_active_note(self):
-            return self.selected_note
+            if self.active_block_index != None:
+                return self.notes[self.active_block_index]
+            else:
+                return None
 
 
 
@@ -455,23 +511,34 @@ init -1 python:
                 height=height,
                 pos=pos,
                 cell_width=NOTE_SELECTOR_WIDTH,
-                cell_height=NOTE_SELECTOR_HEIGHT,
-                grid_origin_offset=(0, -int(NOTE_SELECTOR_HEIGHT / 2)),
+                cell_height=NOTE_SELECTOR_HEIGHT * len(available_notes),
+                grid_origin_offset=(0, -int(NOTE_SELECTOR_HEIGHT * len(available_notes) / 2)),
                 **kwargs
             )
             self.minimal_note_length = minimal_note_length
             self.available_notes = available_notes
             self.selectors = []
             for i in range(-int(bars / minimal_note_length) // 2, int(bars / minimal_note_length) // 2):
-                selector = NoteSelector(
+                if not self.selectors:
+                    selector = NoteSelector(
                         notes=available_notes,
                         pos=self.grid.to_global(self.grid.get_cell_center_local((i, 0))),
                         anchor=(0.5, 0.5)
                     )
+                else:
+                    selector = NoteSelector(
+                            notes=available_notes,
+                            pos=self.grid.to_global(self.grid.get_cell_center_local((i, 0))),
+                            anchor=(0.5, 0.5),
+                            left_selector=self.selectors[-1]
+                        )
+                    self.selectors[-1].right_selector=selector
                 self.add(selector)
                 self.selectors.append(selector)
+
             self.draggroup = DragGroup()
             pointer_pos = self.grid.to_global(self.grid.get_cell_center_local((-int(bars / minimal_note_length) // 2, 1)))
+            pointer_pos = pointer_pos[0], pointer_pos[1] - int(NOTE_SELECTOR_HEIGHT * (len(available_notes) / 2 - 0.5)) 
             self.pointer = IslandPointer(
                 grid=self.grid,
                 left_bound=-int(bars / minimal_note_length) // 2,
@@ -495,31 +562,55 @@ init -1 python:
 
         def generate_audio(self):
             generator = Generator(TIME_SIGNATURE, TEMPO)
-            for pos, note in enumerate(self.get_notes_list()):
-                if note:
-                    generator.add_note(
+            notes_list = self.get_notes_list()
+            last_note = None
+            last_note_duration = None
+            last_note_pos = None
+            for note_pos, note in enumerate(notes_list):
+                if note != last_note:
+                    if last_note != None:
+                        generator.add_note(
+                            Note(
+                                note_name=NoteName[last_note],
+                                octave=3 - (1 if last_note == "B" else 0)
+                            ),
+                            time=last_note_pos * get_quarter_notes_in_bar() * self.minimal_note_length,
+                            duration=last_note_duration * get_quarter_notes_in_bar() * self.minimal_note_length,
+                            volume=80
+                        )
+                    last_note = note
+                    last_note_duration = 1
+                    last_note_pos = note_pos
+                else:
+                    if last_note != None:
+                        last_note_duration += 1
+            if last_note != None:
+                generator.add_note(
                         Note(
-                            note_name=NoteName[note],
-                            octave=3
+                            note_name=NoteName[last_note],
+                            octave=2
                         ),
-                        time=pos * get_quarter_notes_in_bar() * self.minimal_note_length,
-                        duration=self.minimal_note_length,
-                        volume=80
+                        time=last_note_pos * get_quarter_notes_in_bar() * self.minimal_note_length,
+                        duration=last_note_duration * self.minimal_note_length,
+                        volume=100
                     )
             generator.generate("melody_tmp")
-            processed_file = process_vst("mdaPiano.dll", "melody_tmp.midi")
+            processed_file = process_vst("BJAM 2.dll", midi_file="melody_tmp.midi")
+            processed_file = process_vst("Sc32_JykWrakker_Mono.dll", audio_file=processed_file, parameters=AMP_SIM_PARAMETERS)
             return "audio/tmp/{0}".format(processed_file), "melody"
 
 
 
 label init_level2:
+    $ TEMPO = 90
+    $ TIME_SIGNATURE = 4, 4
     $ melody_island = MelodyIsland(
-        3000,
-        1000,
+        6000,
+        500,
         pos=(0.5, 0.5),
-        minimal_note_length=0.25,
-        available_notes=["A", "B", "C", "D", "E", "F", "G"],
-        bars=16
+        minimal_note_length=0.125,
+        available_notes=list(reversed(["B", "Db", "D", "E", "Gb", "G", "A"])),
+        bars=12
     )
     return
 
@@ -555,7 +646,7 @@ screen level2:
                     action Function(
                         generate_and_play,
                         generators=[melody_island.generate_audio],
-                        sources=[],
+                        sources=[["audio/level2/backing_track.mp3", "backing_track"]],
                         total_duration=16 * get_bar_length(),
                         pointer=melody_island.pointer,
                         per_step_callback=None,
