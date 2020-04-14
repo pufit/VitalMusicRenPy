@@ -9,13 +9,13 @@ init python:
 label start:
     scene bg room
 
+    stop music fadeout 2.0
+
     "Nothing changes from day to day."
 
     "The grey city outside the window, things scattered all over the apartment,
     and a pointless attempt to find something to do in the interval
     between awakening and sleep."
-
-    stop music fadeout 2.0
 
     play sound "audio/sfx/cell-phone-vibrate-1.mp3" loop
     "..."

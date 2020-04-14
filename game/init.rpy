@@ -14,19 +14,15 @@ init -1000 python:
     CHORDS = ["Am", "Bm", "C", "Dm", "Em", "F", "G"]
 
     LIBRARY_BACKGROUND_SIZE_RAW = renpy.image_size("icons/library_back.png")
-    LIBRARY_BACKGROUND_SIZE = LIBRARY_BACKGROUND_SIZE_RAW[0] * config.screen_height // LIBRARY_BACKGROUND_SIZE_RAW[1], config.screen_height - 150
+    LIBRARY_BACKGROUND_SIZE = LIBRARY_BACKGROUND_SIZE_RAW[0] * config.screen_height // LIBRARY_BACKGROUND_SIZE_RAW[1], config.screen_height
 
     CHORD_SIZE = 120
     NOTE_SELECTOR_SIZE_RAW = renpy.image_size("icons/note_selector/inactive_block.png")
     NOTE_SELECTOR_HEIGHT = 40
     NOTE_SELECTOR_WIDTH = 60
 
-    COLUMNS_IN_GRID = 3
-
     LIBRARY_TOP_OFFSET = 50
     LIBRARY_SPACING = 40
-
-    SNAP_DISTANCE = 100
 
     # Play space init
 
@@ -39,7 +35,7 @@ init -1000 python:
 
     INITIAL_POS = 0.5, 0.45
 
-    # Progress grid init
+    # Level 1 progress grid init
 
     HIDDEN_CHORDS = ["Am", "F", "C", "G", "Am", "F", "Em", "G", "Am", "C", "F", "G", "Am", "F", "Em", "C"]
 

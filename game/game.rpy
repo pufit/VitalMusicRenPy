@@ -122,7 +122,7 @@ init -1 python:
     class ChordLibrary(Container):
         def __init__(self, **kwargs):
             super(ChordLibrary, self).__init__(**kwargs)
-            self.add(im.Scale(Image("icons/library_back.png"), *LIBRARY_BACKGROUND_SIZE, xalign=1.0))
+            self.add(Frame(im.Scale("icons/library_back.png", *LIBRARY_BACKGROUND_SIZE), 300, 300, xsize=LIBRARY_BACKGROUND_SIZE[0], ysize=LIBRARY_BACKGROUND_SIZE[1] - 150, xalign=1.0))
             button = Fixed(
                 xalign=1.0, 
                 xoffset=-LIBRARY_BACKGROUND_SIZE[0],
@@ -292,7 +292,7 @@ screen level1:
     hbox:
         yalign 1.0
         fixed:
-            add Solid("#AAAAAA")
+            add Frame("images/backgrounds/control_background.png", 50, 50)
             xalign 0.0
             ysize 150
             xsize 400
@@ -322,8 +322,7 @@ screen level1:
                     hover im.Scale("icons/stop_button.png", 115, 115)
                     action Function(stop_all_channels)
         fixed:
-            add Solid("#AAAAAA")
-            xalign 0.0
+            xalign 1.0
             ysize 150
             xsize 1920 - 400
             viewport:
@@ -331,6 +330,7 @@ screen level1:
                 draggable True
                 scrollbars "horizontal"
                 add progress_grid
+                    
     add chord_library at library_position(library_xpos)
 
 screen tutorial(msg, complete_event):
@@ -638,7 +638,7 @@ screen level2:
     hbox:
         yalign 1.0
         fixed:
-            add Solid("#AAAAAA")
+            add Frame("images/backgrounds/control_background.png", 50, 50)
             xalign 0.0
             ysize 150
             xsize 400
