@@ -39,13 +39,21 @@ init -1000 python:
 
     HIDDEN_CHORDS = ["Am", "F", "C", "G", "Am", "F", "Em", "G", "Am", "C", "F", "G", "Am", "F", "Em", "C"]
 
+    # Level 2 progress grid init
+
+    HIDDEN_NOTES = ["B", None, "A", None, "D", "E", "D", "B", None, None, "A", None, "Gb", "E", "D", "B", None, None, "A", None, "D", "E", "D", "E", None, None, "D", None, None, None, None, None,
+                    "B", None, "E", None, None, None, "D", None, "B", None, "A", None, None, None, "D", None, "B", None, "E", None, None, None, "D", None, "Gb", None, "E", None, None, None, "D", None,
+                    "B", None, "E", None, None, None, "D", None, "B", None, "A", None, None, None, "E", None, "B", None, "Gb", None, "E", None, "D", None, "E", None, "B", None, None, None, None, None]
+
     # Music init
 
-    renpy.music.register_channel('chords')
-    renpy.music.register_channel('backing_track')
-    renpy.music.register_channel('melody')
-    renpy.music.register_channel('master')
-    renpy.music.register_channel('util')
+    renpy.music.register_channel("chords", mixer="music")
+    renpy.music.register_channel("backing_track", mixer="music")
+    renpy.music.set_volume(0.5, channel="backing_track")
+    renpy.music.register_channel("melody", mixer="music")
+    renpy.music.register_channel("master", mixer="music")
+    renpy.music.register_channel("melody_reference", mixer="music")
+    renpy.music.set_volume(1.0, channel="melody_reference")
 
     TIME_SIGNATURE = 4, 4
     TEMPO = 90

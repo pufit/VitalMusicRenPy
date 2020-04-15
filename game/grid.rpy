@@ -7,14 +7,7 @@ init -1 python:
                 spacing = (spacing, spacing, spacing, spacing) # Left, Top, Right, Bottom
             self.spacing = spacing
             self.origin_pos = origin_pos
-            self.cells = {}
             self.size = 0
-
-        def set_cell(self, cell_pos, obj):
-            self.cells[cell_pos] = obj
-
-        def get_cell(self, cell_pos):
-            return self.cells[cell_pos]
 
         def to_global(self, pos):
             return pos[0] + self.origin_pos[0], pos[1] + self.origin_pos[1]

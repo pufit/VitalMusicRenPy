@@ -38,6 +38,36 @@ init -1 python:
             y_offset = renpy.get_adjustment(YScrollValue("play_space")).value
             return (pos[0] + x_offset, pos[1] + y_offset)
 
+        def local_to_screen(self, pos):
+            x_offset = renpy.get_adjustment(XScrollValue("play_space")).value
+            y_offset = renpy.get_adjustment(YScrollValue("play_space")).value
+            return (pos[0] - x_offset, pos[1] - y_offset)
+
+
+    class HiddenMarker(Container):
+        def __init__(self, name, d, **kwargs):
+            super(HiddenMarker, self).__init__(**kwargs)
+            self.add(d)
+            self.text = Text(text=str(name), align=(0.5, 0.5))
+            self.add(self.text)
+            self.update()
+
+        def change_name(self, name):
+            self.text.set_text(name)
+
+
+    class ChordFrame(HiddenMarker):
+        def __init__(self, name, size=CHORD_SIZE, **kwargs):
+            super(ChordFrame, self).__init__(
+                name=name,
+                d=im.Scale(Image("icons/chords_frame.png"), size, size),
+                xysize=(size, size),
+                **kwargs
+            )
+
+    def dropped_to_slot(island, drop, drags):
+        island.audio_dirty = True
+
 
     class ChordIsland(Island):
         def __init__(self, width, height, pos, slots, drag_function, global_slots_list, **kwargs):
@@ -95,7 +125,7 @@ init -1 python:
             self.update()
             return chord
 
-        def get_chords_list(self):
+        def get_nodes_list(self):
             chords = []
             for slot in self.chord_slots:
                 if slot.attached is not None and isinstance(slot.attached, ChordDrag):
@@ -107,7 +137,7 @@ init -1 python:
         def generate_audio(self):
             if self.audio_dirty:
                 generator = Generator(TIME_SIGNATURE, TEMPO)
-                for pos, chord in enumerate(self.get_chords_list()):
+                for pos, chord in enumerate(self.get_nodes_list()):
                     midi_chord = Chord(*parse_chord(chord))
                     for i in range(4):
                         generator.add_chord(midi_chord, (pos + float(i) / 4) * get_quarter_notes_in_bar(), get_quarter_notes_in_bar() / 4, 80)
@@ -176,24 +206,29 @@ init -1 python:
 
 
     class ProgressGrid(LayoutGrid):
-        def __init__(self, **kwargs):
+        def __init__(self, hidden_names, marker_type, marker_size, **kwargs):
             super(ProgressGrid, self).__init__(**kwargs)
-            for chord in HIDDEN_CHORDS:
-                self.add(ChordFrame("?", size=130))
-            self.chords_status = [False] * len(HIDDEN_CHORDS)
+            self.hidden_names = hidden_names
+            self.chords_status = [False] * len(hidden_names)
+            for i, chord in enumerate(hidden_names):
+                if chord:
+                    self.add(marker_type("?", marker_size))
+                else:
+                    self.chords_status[i] = True
+                    self.add(Null(width=marker_size, height=marker_size))
 
         def reveal_chord(self, index):
-            self.children[index].change_name(HIDDEN_CHORDS[index])
+            self.children[index].change_name(self.hidden_names[index])
             self.chords_status[index] = True
             if all(self.chords_status):
                 return True
 
 
-    def generate_and_play(generators, sources, total_duration, pointer, per_step_callback, step, play_stop_callback):
+    def generate_and_play(generators, sources, total_duration, pointer, per_step_callback, step, play_stop_callback, mode=1):
         def run():
             def start_playback():
                 for i in range(1, int(total_duration // step_duration) + 1):
-                    if per_step_callback:
+                    if per_step_callback and mode == 1:
                         if per_step_callback(start_cell - pointer.start_cell + i - 1):
                             renpy.queue_event("end_level")
                             return
@@ -203,7 +238,7 @@ init -1 python:
                         time.sleep(0.2)
                     pointer.move_to(start_cell + i)
 
-            generate_and_play.active = True
+            generate_and_play.is_active = True
             DisalableDrag.disabled = True
             NoteSelector.disabled = True
 
@@ -220,7 +255,7 @@ init -1 python:
             start_cell = pointer.get_cell()[0]
             offset = (start_cell - pointer.start_cell) * step_duration
 
-            generate_and_play.playing = True
+            generate_and_play.play_status = mode
             if play_stop_callback:
                 play_stop_callback()
             channels = []
@@ -240,28 +275,28 @@ init -1 python:
 
             NoteSelector.disabled = False
             DisalableDrag.disabled = False
-            generate_and_play.active = False
-            generate_and_play.playing = False
+            generate_and_play.is_active = False
+            generate_and_play.play_status = 0
 
             return
 
-        if generate_and_play.active:
-            if not generate_and_play.playing:
+        if generate_and_play.is_active:
+            if not generate_and_play.play_status:
                 renpy.notify("Processing, please wait")
             else:
                 renpy.notify("Already playing")
             return
         Thread(target=run).start()
 
-    generate_and_play.active = False
-    generate_and_play.playing = False
+    generate_and_play.is_active = False
+    generate_and_play.play_status = 0
 
 
-    def check_chord(island, progress_grid, index):
-        chords = island.get_chords_list()
+    def check_marker(island, progress_grid, index):
+        chords = island.get_nodes_list()
         if index >= len(chords):
             return
-        if HIDDEN_CHORDS[index] == chords[index]:
+        if chords[index] and progress_grid.hidden_names[index] == chords[index]:
             if progress_grid.reveal_chord(index):
                 return True
 
@@ -270,6 +305,7 @@ init -1 python:
         renpy.music.stop(channel="chords")
         renpy.music.stop(channel="backing_track")
         renpy.music.stop(channel="melody")
+        renpy.music.stop(channel="melody_reference")
         renpy.music.stop(channel="master")
 
 
@@ -305,14 +341,14 @@ screen level1:
                     hover im.Scale("icons/play_button_idle.png", 115, 115)
                     selected_idle im.Scale("icons/play_button.png", 120, 120)
                     selected_hover im.Scale("icons/play_button.png", 115, 115)
-                    selected generate_and_play.playing
+                    selected generate_and_play.play_status == 1
                     action Function(
                         generate_and_play,
                         generators=[chord_island.generate_audio],
                         sources=[("audio/guitar.mp3", "backing_track")],
                         total_duration=16 * get_bar_length(),
                         pointer=chord_island.pointer,
-                        per_step_callback=renpy.curry(check_chord)(chord_island, progress_grid),
+                        per_step_callback=renpy.curry(check_marker)(chord_island, progress_grid_level1),
                         step=1,
                         play_stop_callback=renpy.restart_interaction
                     )
@@ -329,7 +365,7 @@ screen level1:
                 yalign 0.5
                 draggable True
                 scrollbars "horizontal"
-                add progress_grid
+                add progress_grid_level1
                     
     add chord_library at library_position(library_xpos)
 
@@ -373,7 +409,16 @@ label init_level1:
         drag_function=chord_block_dragged
     )
     default library_xpos = 0
-    default progress_grid = ProgressGrid(rows=1, cols=16, yspacing=10, xspacing=0)
+    default progress_grid_level1 = ProgressGrid(
+        rows=1,
+        cols=16,
+        hidden_names=HIDDEN_CHORDS,
+        d=ChordFrame("?", size=130),
+        marker_type=ChordFrame,
+        marker_size=130,
+        yspacing=10,
+        xspacing=0
+    )
     return
 
 label game:
@@ -424,6 +469,16 @@ label after_game:
 
 
 init -1 python:
+
+    class HiddenNote(HiddenMarker):
+        def __init__(self, name, size, **kwargs):
+            super(HiddenNote, self).__init__(
+                name=name,
+                d=im.Scale("images/icons/note_marker.png", size, size),
+                xysize=(size,size),
+                **kwargs
+            )
+
 
     class NoteSelector(renpy.Displayable):
         disabled = False
@@ -505,9 +560,8 @@ init -1 python:
                 return None
 
 
-
     class MelodyIsland(Island):
-        def __init__(self, width, height, pos, minimal_note_length, available_notes, bars,  **kwargs):
+        def __init__(self, width, height, pos, minimal_note_length, available_notes, bars, **kwargs):
             super(MelodyIsland, self).__init__(
                 width=width,
                 height=height,
@@ -522,6 +576,7 @@ init -1 python:
             self.selectors = []
             self.audio_dirty = True
             self.last_audio = None
+            self.bars = bars
             for i in range(-int(bars / minimal_note_length) // 2, int(bars / minimal_note_length) // 2):
                 if not self.selectors:
                     selector = NoteSelector(
@@ -559,7 +614,7 @@ init -1 python:
             self.add(self.draggroup)
             self.update()
 
-        def get_notes_list(self):
+        def get_nodes_list(self):
             notes = []
             for selector in self.selectors:
                 notes.append(selector.get_active_note())
@@ -569,7 +624,7 @@ init -1 python:
         def generate_audio(self):
             if self.audio_dirty:
                 generator = Generator(TIME_SIGNATURE, TEMPO)
-                notes_list = self.get_notes_list()
+                notes_list = self.get_nodes_list()
                 last_note = None
                 last_note_duration = None
                 last_note_pos = None
@@ -621,6 +676,15 @@ label init_level2:
         available_notes=list(reversed(["B", "Db", "D", "E", "Gb", "G", "A"])),
         bars=12
     )
+    $ progress_grid_level2 = ProgressGrid(
+        rows=1,
+        cols=12*8,
+        hidden_names=HIDDEN_NOTES,
+        marker_type=HiddenNote,
+        marker_size=NOTE_SELECTOR_WIDTH,
+        pos=(0.5, 0.43),
+        xanchor=0.5
+    )
     return
 
 
@@ -631,18 +695,24 @@ screen level2:
     viewport id "play_space":
         add Frame("backgrounds/playspace.png", tile=True)
         child_size PLAYSPACE_WIDTH, PLAYSPACE_HEIGHT
-        xinitial INITIAL_POS[0]
+        xinitial 0.08
         yinitial INITIAL_POS[1]
         draggable True
         add melody_island
+        add progress_grid_level2
+    # vbox:
+    #     xalign 0.0
+    #     yanchor 0.5
+    #     for i in range(7):
+    #         add im.Scale("images/icons/sample_block.png", NOTE_SELECTOR_WIDTH, NOTE_SELECTOR_HEIGHT)
     hbox:
         yalign 1.0
         fixed:
             add Frame("images/backgrounds/control_background.png", 50, 50)
             xalign 0.0
             ysize 150
-            xsize 400
-            grid 2 1:
+            xsize 600
+            grid 3 1:
                 align 0.5, 0.5
                 xspacing 60
                 imagebutton:
@@ -651,16 +721,34 @@ screen level2:
                     hover im.Scale("icons/play_button_idle.png", 115, 115)
                     selected_idle im.Scale("icons/play_button.png", 120, 120)
                     selected_hover im.Scale("icons/play_button.png", 115, 115)
-                    selected generate_and_play.playing
+                    selected generate_and_play.play_status == 1
                     action Function(
                         generate_and_play,
                         generators=[melody_island.generate_audio],
                         sources=[["audio/level2/backing_track.mp3", "backing_track"]],
                         total_duration=16 * get_bar_length(),
                         pointer=melody_island.pointer,
-                        per_step_callback=None,
+                        per_step_callback=renpy.curry(check_marker)(melody_island, progress_grid_level2),
                         step=melody_island.minimal_note_length,
                         play_stop_callback=renpy.restart_interaction
+                    )
+                imagebutton:
+                    align 0.5, 0.5
+                    idle im.Scale("icons/play_button_idle_2.png", 120, 120)
+                    hover im.Scale("icons/play_button_idle_2.png", 115, 115)
+                    selected_idle im.Scale("icons/play_button_2.png", 120, 120)
+                    selected_hover im.Scale("icons/play_button_2.png", 115, 115)
+                    selected generate_and_play.play_status == 2
+                    action Function(
+                        generate_and_play,
+                        generators=[],
+                        sources=[["audio/level2/backing_track.mp3", "backing_track"], ["audio/level2/synth.mp3", "melody_reference"]],
+                        total_duration=16 * get_bar_length(),
+                        pointer=melody_island.pointer,
+                        per_step_callback=renpy.curry(check_marker)(melody_island, progress_grid_level2),
+                        step=melody_island.minimal_note_length,
+                        play_stop_callback=renpy.restart_interaction,
+                        mode=2
                     )
                 imagebutton:
                     align 0.5, 0.5
@@ -673,4 +761,11 @@ label pre_level2:
     scene
     call init_level2
     call disable_vn
-    call screen level2
+    show screen level2
+    $ is_tutorial_modal = True
+    call screen tutorial("You was asked to complete your customer's track by adding guitar melody to it. Let's quickly get through the new interface", "dismiss")
+    call screen tutorial("You can see a grid that is the main editor in this level. Each column represents one time unit (actually eighth note if you familiar with it. If not, do not worry, you don't need this knowledge for this task).", "dismiss")
+    call screen tutorial("By pressing at any grid cell you can select which note will be played when the track will reach this column.", "dismiss")
+    call screen tutorial("You can see hidden notes at the top of the grid. Your goal is to reveal them all. You can see new blue button in the control panel. It will play melody that you should reproduce.", "dismiss")
+    call screen tutorial("Question marks only point the start of each note in melody. You needn't to match exact same length for every note so it's completely up to you. Good luck!", "dismiss")
+    $ renpy.pause(hard=True)

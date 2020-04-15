@@ -51,20 +51,6 @@ init -1 python:
                     super(DisalableDrag, self).event(pygame.MOUSEBUTTONUP, x, y, st)
 
 
-    class ChordFrame(Container):
-        def __init__(self, name, size=CHORD_SIZE, **kwargs):
-            super(ChordFrame, self).__init__(xysize=(size, size), **kwargs)
-            self.add(im.Scale(Image("icons/chords_frame.png"), size, size))
-            self.text = Text(text=str(name), align=(0.5, 0.5))
-            self.add(self.text)
-            self.update()
-
-        def change_name(self, name):
-            self.text.set_text(name)
-
-    def dropped_to_slot(island, drop, drags):
-        island.audio_dirty = True
-
     class SlotDrag(Drag):
         def __init__(self, index, island, pos, **kwargs):
             super(SlotDrag, self).__init__(
