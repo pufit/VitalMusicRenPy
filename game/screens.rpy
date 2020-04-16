@@ -43,6 +43,9 @@ style prompt_text is gui_text:
 style white_text is gui_text:
     color "#fff"
 
+style black_text is gui_text:
+    color "#000"
+
 style bar:
     ysize gui.bar_size
     left_bar Frame("gui/bar/left.png", gui.bar_borders, tile=gui.bar_tile)

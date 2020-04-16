@@ -39,6 +39,6 @@ label start:
     w "The work is simple, but it is necessary to be in time. I pay 1000$.
     OK? Agreed."
 
-    jump game
+    jump pre_level1
 
     return

@@ -55,6 +55,14 @@ init -1000 python:
     renpy.music.register_channel("melody_reference", mixer="music")
     renpy.music.set_volume(1.0, channel="melody_reference")
 
+    renpy.music.register_channel("sample_buttons_B", mixer="music")
+    renpy.music.register_channel("sample_buttons_Db", mixer="music")
+    renpy.music.register_channel("sample_buttons_D", mixer="music")
+    renpy.music.register_channel("sample_buttons_E", mixer="music")
+    renpy.music.register_channel("sample_buttons_Gb", mixer="music")
+    renpy.music.register_channel("sample_buttons_G", mixer="music")
+    renpy.music.register_channel("sample_buttons_A", mixer="music")
+
     TIME_SIGNATURE = 4, 4
     TEMPO = 90
 
