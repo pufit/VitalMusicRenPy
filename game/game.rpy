@@ -221,10 +221,12 @@ init -1 python:
                     self.add(Null(width=marker_size, height=marker_size))
 
         def reveal_chord(self, index):
+            print("revealing", index)
             self.children[index].change_name(self.hidden_names[index])
             self.names_status[index] = True
             if all(self.names_status):
                 return True
+            print("Ok! revealed", index)
 
 
     class HiddenNote(HiddenMarker):
@@ -339,7 +341,7 @@ init -1 python:
             for note in available_notes:
                 note_name = Container(xysize=(NOTE_SELECTOR_WIDTH, NOTE_SELECTOR_HEIGHT))
                 note_name.add(im.Scale("images/icons/sample_block.png", NOTE_SELECTOR_WIDTH, NOTE_SELECTOR_HEIGHT))
-                note_name.add(Text(text="{color=#000}" + note + "{/color}", align=(0.5, 0.5)))
+                note_name.add(Text(text=note, text_style="white_text", size=NOTE_SELECTOR_HEIGHT - 15, align=(0.5, 0.5)))
                 note_names.add(note_name)
             self.add(note_names)
             for i in range(-int(bars / minimal_note_length) // 2, int(bars / minimal_note_length) // 2):
@@ -853,7 +855,7 @@ screen level2():
                         textbutton note:
                             text_align 0.5, 0.5
                             xysize 70, 110
-                            text_style "black_text"
+                            text_style "white_text"
                             action Play(channel="sample_buttons_{0}".format(note), file="audio/notes/{0}.mp3".format(note), loop=False)
 
 
