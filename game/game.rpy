@@ -96,6 +96,7 @@ init -1 python:
             self.add(self.draggroup)
             self.audio_dirty = True
             self.last_audio = None
+            self.last_start = 0
             
             pointer_pos = self.grid.to_global(self.grid.get_cell_center_local((-slots / 2, 1)))
             self.pointer = IslandPointer(
@@ -134,8 +135,9 @@ init -1 python:
                     chords.append("Empty")
             return chords
 
-        def generate_audio(self):
-            if self.audio_dirty:
+        def generate_audio(self, start=0):
+            if self.audio_dirty or self.last_start > start:
+                self.last_start = start
                 generator = Generator(TIME_SIGNATURE, TEMPO)
                 for pos, chord in enumerate(self.get_nodes_list()):
                     midi_chord = Chord(*parse_chord(chord))
