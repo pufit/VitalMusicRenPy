@@ -221,12 +221,10 @@ init -1 python:
                     self.add(Null(width=marker_size, height=marker_size))
 
         def reveal_chord(self, index):
-            print("revealing", index)
             self.children[index].change_name(self.hidden_names[index])
             self.names_status[index] = True
             if all(self.names_status):
                 return True
-            print("Ok! revealed", index)
 
 
     class HiddenNote(HiddenMarker):
@@ -530,12 +528,14 @@ transform loading_rotate:
         linear 1.0 rotate 360
         repeat
 
+screen waiting_for_end_level():
+    zorder -1000
+    key "end_level" action Return
 
 screen level1():
     zorder -100
     default is_loading = False
     key "hide_windows" action NullAction()
-    key "end_level" action Jump("post_level1")
     key "music_started" action SetScreenVariable("is_loading", False)
     viewport id "play_space":
         add Frame("backgrounds/playspace.png", tile=True)
@@ -678,7 +678,8 @@ label level1:
     $ is_tutorial_modal = True
     call screen tutorial("Now try to reveal all hidden chords. That’s the end of tutorial. Good luck!", "dismiss")
     $ renpy.transition(dissolve)
-    $ renpy.pause(hard=True)
+label level1_in_process:
+    call screen waiting_for_end_level
     jump post_level1
 
 label level1_repeat_tutorial:
@@ -694,8 +695,7 @@ label level1_repeat_tutorial:
     call screen tutorial("You can listen the track from any point you want by dragging the array beneath the chord blocks from left to right.", "dismiss")
     $ renpy.transition(dissolve)
     call screen tutorial("Now try to reveal all hidden chords. That’s the end of tutorial. Good luck!", "dismiss")
-    $ renpy.pause(hard=True)
-    jump post_level1
+    jump level1_in_process
 
 label post_level1:
     $ is_tutorial_modal = True
@@ -772,7 +772,6 @@ screen level2():
     zorder -100
     default is_loading = False
     key "hide_windows" action NullAction()
-    key "end_level" action Jump("post_level2")
     key "music_started" action SetScreenVariable("is_loading", False)
     viewport id "play_space":
         add Frame("backgrounds/playspace.png", tile=True)
@@ -884,7 +883,7 @@ label level2:
     call screen tutorial("Tip: use blue play button and try to repeat the melody with the white buttons first. When you think that your melody is close to the original you can check it with the green play button (green play button takes some time to process your melody)", "dismiss")
     $ renpy.transition(dissolve)
     call screen tutorial("Question marks only point the start of each note in melody. You needn't to match exact same length for every note so it's completely up to you. Good luck!", "dismiss")
-    $ renpy.pause(hard=True)
+    call screen waiting_for_end_level
     jump post_level2
 
 label post_level2:
