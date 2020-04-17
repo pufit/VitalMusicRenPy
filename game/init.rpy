@@ -22,6 +22,7 @@ init -1000 python:
     config.keymap["end_level"] = []
     config.keymap["chord_placed"] = []
     config.keymap["music_stopped"] = []
+    config.keymap["music_started"] = []
     config.keymap["pointer_moved"] = []
 
     # Library init

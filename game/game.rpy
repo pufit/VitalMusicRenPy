@@ -433,6 +433,7 @@ init -1 python:
         @metrics.measure('main')
         def run():
             def start_playback():
+                renpy.queue_event("music_started")
                 for i in range(1, int(total_duration // step_duration) + 1):
                     if per_step_callback and mode == 1:
                         if per_step_callback(start_cell - pointer.start_cell + i - 1):
@@ -521,11 +522,19 @@ transform library_position(x):
     subpixel True
     linear 0.5 xpos x
 
+transform loading_rotate:
+    on show:
+        rotate 0
+        linear 1.0 rotate 360
+        repeat
 
-screen level1:
+
+screen level1():
     zorder -100
+    default is_loading = False
     key "hide_windows" action NullAction()
     key "end_level" action Jump("post_level1")
+    key "music_started" action SetScreenVariable("is_loading", False)
     viewport id "play_space":
         add Frame("backgrounds/playspace.png", tile=True)
         child_size PLAYSPACE_WIDTH, PLAYSPACE_HEIGHT
@@ -537,6 +546,9 @@ screen level1:
         align 0.0, 0.0
         idle im.Scale("images/icons/repeat_tutorial.png", 70, 70)
         action Jump("level1_repeat_tutorial")
+    showif is_loading:
+        image "images/icons/loading.png" at loading_rotate:
+            align 0.5, 0.5
     hbox:
         yalign 1.0
         fixed:
@@ -554,7 +566,7 @@ screen level1:
                     selected_idle im.Scale("icons/play_button.png", 120, 120)
                     selected_hover im.Scale("icons/play_button.png", 115, 115)
                     selected generate_and_play.play_status == 1
-                    action Function(
+                    action [Function(
                         generate_and_play,
                         generators=[chord_island.generate_audio],
                         sources=[("audio/guitar.mp3", "backing_track")],
@@ -563,7 +575,8 @@ screen level1:
                         per_step_callback=renpy.curry(check_marker)(chord_island, progress_grid_level1),
                         step=1,
                         play_stop_callback=renpy.restart_interaction
-                    )
+                    ),
+                    SetScreenVariable("is_loading", True)]
                 imagebutton:
                     align 0.5, 0.5
                     idle im.Scale("icons/stop_button.png", 120, 120)
@@ -680,6 +693,7 @@ label level1_repeat_tutorial:
     $ renpy.transition(dissolve)
     call screen tutorial("Now try to reveal all hidden chords. That’s the end of tutorial. Good luck!", "dismiss")
     $ renpy.pause(hard=True)
+    jump post_level1
 
 label post_level1:
     $ is_tutorial_modal = True
@@ -697,6 +711,34 @@ label post_level1:
     w "Please, don’t waste these money, buy equipment, find an advertiser… There’re so many options."
     w "Now I’m gonna rock out all night! The album's release exceeded all expectations. Check it out, this album will be at the top of the charts in a couple of days."
     w "Remember, I owe you one. I hope I also helped you in some way. Keep in touch, David."
+    d "Willie, you’re an idiot. There’s no place for music in my life and no place for me in music."
+    scene black with dissolve
+    "Willie’s call aroused in David something long ago forgotten. Sometimes some absolutely new, unknown melodies began to appear in his head. And sometimes,
+    but much less often, there was a smile on his face."
+    "Parts of the soul, that were dead for a long time, were coming to life again.
+    But he didn’t want to see it. It was not so easy to break out the state of a few last years."
+    play sound "audio/sfx/cell-phone-vibrate-1.mp3" loop
+    d "Not again..."
+    play sound "audio/sfx/cell-phone-flip-1.mp3"
+    anon "David, good evening! I have a really excellent offer for you. Listen, …"
+    d "Who is it? Where did you find my phone number? Willie, if it’s your new joke, it isn’t so funny."
+    anon "David, David, listen to me, please! I prefer to remain anonymous, because…"
+    d "Any offer isn’t interesting for me. Goodbye."
+    anon "David, I know where is Rebecca."
+    d "..."
+    d "Why I should trust you? It took 3 years and no one could find her. "
+    anon "I got really strong contacts. A few days ago I asked to find her number and location. It wasn’t so easy, but they found her."
+    anon "David, listen, I understand there’re not so reasons why you should trust me. But think about: if you’ll help me, you’ll receive her number and address."
+    anon "Of course, everything can be a lie, but when you’ll receive so great opportunity next time?  Also you’ll earn some money. I think it’ll be not so bad bonus."
+    d "Okay. I trust you. What do you want? "
+    anon "I glad we found a compromise. So, David, there’s not so easy task for you. Recently one of my agents got an amazing demo of a local band. They plan to drop this single in a few days, and I’m absolutely sure it gonna take the top positions of all charts."
+    anon "Your aim is to recover track from demo before they’ll release it. If you’ll finish at time my people will send you Rebecca’s number and address. Also you’ll receive 2000$."
+    anon "If you’re worried about the legal component of my offer, I can promise – nobody’ll find you. Of course, you can think that’s a lie, but I assure you – we’ll earn so much money that it’ll cover all expenses with any vessels."
+    anon "It’s in our interest to strengthen the contact with you because it’s not the last task for you probably."
+    anon "Also you can call to police and tell everything about it. But I don’t advise you to do that. We have our people everywhere, and in police also. We’ll find out that you called them, and the only thing I can wish – hide so well that my guys won’t find you."
+    anon "The last option just to reject my offer. Don’t worry, I’ll understand you, and nobody’ll touch you. But, David, I’ll repeat my question: when you’ll receive so great opportunity to find Rebecca next time?"
+    anon "So, David, are you in?"
+    d "Okay. I’m waiting for a demo."
     jump pre_level2
 
 
@@ -724,10 +766,12 @@ label init_level2:
     return
 
 
-screen level2:
+screen level2():
     zorder -100
+    default is_loading = False
     key "hide_windows" action NullAction()
     key "end_level" action Jump("post_level2")
+    key "music_started" action SetScreenVariable("is_loading", False)
     viewport id "play_space":
         add Frame("backgrounds/playspace.png", tile=True)
         child_size PLAYSPACE_WIDTH, PLAYSPACE_HEIGHT
@@ -740,6 +784,9 @@ screen level2:
         align 0.0, 0.0
         idle im.Scale("images/icons/repeat_tutorial.png", 70, 70)
         action Jump("level2")
+    showif is_loading:
+        image "images/icons/loading.png" at loading_rotate:
+            align 0.5, 0.5
         
     hbox:
         yalign 1.0
@@ -758,7 +805,7 @@ screen level2:
                     selected_idle im.Scale("icons/play_button.png", 120, 120)
                     selected_hover im.Scale("icons/play_button.png", 115, 115)
                     selected generate_and_play.play_status == 1
-                    action Function(
+                    action [Function(
                         generate_and_play,
                         generators=[melody_island.generate_audio],
                         sources=[["audio/level2/backing_track.mp3", "backing_track"]],
@@ -767,7 +814,8 @@ screen level2:
                         per_step_callback=renpy.curry(check_marker)(melody_island, progress_grid_level2),
                         step=melody_island.minimal_note_length,
                         play_stop_callback=renpy.restart_interaction
-                    )
+                    ),
+                    SetScreenVariable("is_loading", True)]
                 imagebutton:
                     align 0.5, 0.5
                     idle im.Scale("icons/play_button_idle_2.png", 120, 120)
@@ -845,4 +893,15 @@ label post_level2:
     pause 0.5
     call enable_vn
     hide screen level2
+    scene bg room
+    "This strange man didn’t lie. Rebecca’s address and phone number were received."
+    d "It took 3 years. 3 years I tried everything to find her. I asked everyone for help. I begged everyone for help.
+    And nobody could help me. Nobody. I talked with anyone who knew her and nobody had any suggestion where is she."
+    d "After a year of useless searches I tried to forget her. There’s nothing left remind of her.
+    But I didn’t know the main and the biggest reminder is myself. And I couldn’t do with it anything. "
+    d "There’s her number. Okay, I’ll call her. It’s not so hard. "
+    "..."
+    d "Rebecca, hi. It’s David."
+
+
     "That is the end of this version. You are breathtaking if you have reached this point! We will continue the story with a bunch of new musical minigames to play in later updates. So stay tuned!"
