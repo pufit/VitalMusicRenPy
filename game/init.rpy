@@ -1,8 +1,23 @@
 init -1000 python:
 
     import os
+    import uuid
 
     GAME_ROOT = os.path.join(config.basedir, "game")
+
+    UUID_FILENAME = os.path.join(GAME_ROOT, 'uuid')
+
+    if os.path.exists(UUID_FILENAME):
+        with open(UUID_FILENAME) as f:
+            uuid = f.read()
+    else:
+        uuid = str(uuid.uuid4())
+        
+        with open(UUID_FILENAME, 'w') as f:
+            f.write(uuid)
+
+    METRICS_ADDRESS = '178.128.203.213:8086'
+    METRICS_DB_NAME = 'statistic'
 
     config.keymap["end_level"] = []
     config.keymap["chord_placed"] = []

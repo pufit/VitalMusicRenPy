@@ -135,6 +135,7 @@ init -1 python:
                     chords.append("Empty")
             return chords
 
+        @metrics.measure('chord')
         def generate_audio(self, start=0):
             if self.audio_dirty or self.last_start > start:
                 self.last_start = start
@@ -384,7 +385,7 @@ init -1 python:
                 notes.append(selector.get_active_note())
             return notes
 
-
+        @metrics.measure('melody')
         def generate_audio(self, start=0):
             if self.audio_dirty or self.last_start > start:
                 self.last_start = start
@@ -428,8 +429,8 @@ init -1 python:
                 self.audio_dirty = False
             return self.last_audio, "melody"
 
-
     def generate_and_play(generators, sources, total_duration, pointer, per_step_callback, step, play_stop_callback, mode=1):
+        @metrics.measure('main')
         def run():
             def start_playback():
                 for i in range(1, int(total_duration // step_duration) + 1):
@@ -449,14 +450,15 @@ init -1 python:
 
             start_cell = pointer.get_cell()[0]
 
-            threads = []
-            generated = []
-            for generator in generators:
-                threads.append(Thread(target=lambda gen, offset : generated.append(gen(start=offset)), args=[generator, start_cell - pointer.start_cell]))
-            for t in threads:
-                t.start()
-            for t in threads:
-                t.join()
+            with metrics.context_measure('generating'):
+                threads = []
+                generated = []
+                for generator in generators:
+                    threads.append(Thread(target=lambda gen, offset : generated.append(gen(start=offset)), args=[generator, start_cell - pointer.start_cell]))
+                for t in threads:
+                    t.start()
+                for t in threads:
+                    t.join()
 
             step_duration = get_bar_length() * step
             offset = (start_cell - pointer.start_cell) * step_duration
@@ -683,6 +685,7 @@ label post_level1:
     $ is_tutorial_modal = True
     call screen tutorial("Congratulations!\n You finished your first task!", "dismiss")
     $ stop_all_channels()
+    $ metrics.increment("first_level_pass")
     pause 0.5
     call enable_vn
     hide screen level1
@@ -837,6 +840,7 @@ label level2:
 label post_level2:
     $ is_tutorial_modal = True
     call screen tutorial("Congratulations!\n Task is completed!", "dismiss")
+    $ metrics.increment("second_level_pass" )
     $ stop_all_channels()
     pause 0.5
     call enable_vn
