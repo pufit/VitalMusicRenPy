@@ -569,6 +569,7 @@ screen level1():
                     selected_idle im.Scale("icons/play_button.png", 120, 120)
                     selected_hover im.Scale("icons/play_button.png", 115, 115)
                     selected generate_and_play.play_status == 1
+                    keysym "K_SPACE"
                     action [Function(
                         generate_and_play,
                         generators=[chord_island.generate_audio],
@@ -579,7 +580,7 @@ screen level1():
                         step=1,
                         play_stop_callback=renpy.restart_interaction
                     ),
-                    SetScreenVariable("is_loading", True)]
+                    SetScreenVariable("is_loading", not generate_and_play.is_active)]
                 imagebutton:
                     align 0.5, 0.5
                     idle im.Scale("icons/stop_button.png", 120, 120)
@@ -807,6 +808,7 @@ screen level2():
                     selected_idle im.Scale("icons/play_button.png", 120, 120)
                     selected_hover im.Scale("icons/play_button.png", 115, 115)
                     selected generate_and_play.play_status == 1
+                    keysym "K_SPACE"
                     action [Function(
                         generate_and_play,
                         generators=[melody_island.generate_audio],
@@ -817,7 +819,7 @@ screen level2():
                         step=melody_island.minimal_note_length,
                         play_stop_callback=renpy.restart_interaction
                     ),
-                    SetScreenVariable("is_loading", True)]
+                    SetScreenVariable("is_loading", not generate_and_play.is_active)]
                 imagebutton:
                     align 0.5, 0.5
                     idle im.Scale("icons/play_button_idle_2.png", 120, 120)
