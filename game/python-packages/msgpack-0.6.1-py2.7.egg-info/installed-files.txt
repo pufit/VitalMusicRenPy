@@ -1,0 +1,14 @@
+..\msgpack\exceptions.py
+..\msgpack\fallback.py
+..\msgpack\_version.py
+..\msgpack\__init__.py
+..\msgpack\exceptions.pyc
+..\msgpack\fallback.pyc
+..\msgpack\_version.pyc
+..\msgpack\__init__.pyc
+..\msgpack\_cmsgpack.pyd
+.\
+dependency_links.txt
+PKG-INFO
+SOURCES.txt
+top_level.txt

@@ -400,7 +400,7 @@ init -1 python:
                             generator.add_note(
                                 Note(
                                     note_name=NoteName[last_note],
-                                    octave=3 - (1 if last_note == "B" else 0)
+                                    octave=4 - (1 if last_note == "B" else 0)
                                 ),
                                 time=last_note_pos * get_quarter_notes_in_bar() * self.minimal_note_length,
                                 duration=last_note_duration * get_quarter_notes_in_bar() * self.minimal_note_length,
@@ -423,7 +423,7 @@ init -1 python:
                             volume=100
                         )
                 generator.generate("melody_tmp")
-                processed_file = process_vst("BJAM 2.dll", midi_file="melody_tmp.midi")
+                processed_file = process_vst("Karoryfer Cute Emily Guitar - 32.dll", midi_file="melody_tmp.midi")
                 processed_file = process_vst("Sc32_JykWrakker_Mono.dll", audio_file=processed_file, parameters=AMP_SIM_PARAMETERS)
                 self.last_audio = "audio/tmp/{0}".format(processed_file)
                 self.audio_dirty = False
@@ -437,6 +437,7 @@ init -1 python:
                 for i in range(1, int(total_duration // step_duration) + 1):
                     if per_step_callback and mode == 1:
                         if per_step_callback(start_cell - pointer.start_cell + i - 1):
+                            renpy.restart_interaction()
                             renpy.queue_event("end_level")
                             return
                     while renpy.music.get_pos("master") < i * step_duration + offset:

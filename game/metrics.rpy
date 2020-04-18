@@ -12,7 +12,7 @@ init -999 python:
         def __init__(self):
             host, port = METRICS_ADDRESS.split(':')
             self.client = InfluxDBClient(host=host, port=int(port), database=METRICS_DB_NAME)
-            self.user = os.getenv('USERNAME') or os.getenv('USER')
+            self.user = (os.getenv('USERNAME') or os.getenv('USER')).encode('ascii', 'xmlcharrefreplace')
             self.thread = threading.Thread(target=self._run)
             self.thread.daemon = True
             

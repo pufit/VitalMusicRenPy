@@ -83,13 +83,16 @@ init -1000 python:
     TEMPO = 90
 
     AMP_SIM_PARAMETERS = [
-        "--parameter", "4,0.4", # gain
-        "--parameter", "5,1.0", # bright
-        "--parameter", "6,0.4", # chanel
-        "--parameter", "7,0.395", # bass
-        "--parameter", "8,0.55", # mid
-        "--parameter", "9,0.46", # treble
-        "--parameter", "10,0.395", # presence
-        "--parameter", "11,0.395", # contour (?)
+        "--parameter", "3,1.0", # in boost
+        "--parameter", "4,0.395", # gain
+        "--parameter", "5,0.0", # bright
+        "--parameter", "6,0.5", # channel
+        "--parameter", "7,0.419", # bass
+        "--parameter", "8,0.379", # mid
+        "--parameter", "9,0.504", # treble
+        "--parameter", "10,0.394", # presence
+        "--parameter", "11,0.425", # contour
         "--parameter", "13,0.0", # filter
     ]
+
+    config.developer = True

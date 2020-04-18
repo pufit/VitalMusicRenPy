@@ -1,6 +1,6 @@
 # The game starts here.
 
-define w = Character(_('Wille, the customer'), color="#fe9601")
+define w = Character(_('Willie, the customer'), color="#fe9601")
 define anon = Character(_('???'), color="#3b4045")
 define d = Character(_("David"), color="#F6743F")
 
